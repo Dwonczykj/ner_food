@@ -2,6 +2,8 @@ import pytest
 
 from notebooks.tree import newNode, print2D, Node, traverseInorder, traversePostorder, traversePreorder
 
+
+
 def test_print2D():
     root = newNode(1)
     root.appendChild(newNode(2))
