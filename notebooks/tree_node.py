@@ -128,14 +128,14 @@ class TreePrintable(ITreeNode):
         n = 0
         if self.children:
             n = len(self.children)
-        return self.children[:int((n+1)/2.0)-1]
+        return self.children[int((n+1)/2.0):]
 
     def leftChildren(self) -> list:
         # Get number of children to root
         n = 0
         if self.children:
             n = len(self.children)
-        return self.children[int((n+1)/2.0)-1:]
+        return self.children[:int((n+1)/2.0)]
         
 
 
@@ -152,51 +152,21 @@ class TreePrintable(ITreeNode):
 
     PRINT_SPACE_COUNT = [8] # == 2 tabs
     PRINT_HYPHEN_COUNT = int(PRINT_SPACE_COUNT[0]/2)
-    # Function to print binary tree in 2D
-    # It does reverse inorder traversal
-    def print2DUtil(root, space:int) -> str:
+    
+    def _print2DUtilArr(root, space:int) -> list:
 
-        output = ''
+        output = []
 
         # Base case
         if (root == None):
             return ''
 
         # Increase distance between levels
-        space += TreeRootNodeBase.PRINT_SPACE_COUNT[0]
+        space += TreePrintable.PRINT_SPACE_COUNT[0]
 
-        # Get number of children to root
-        n = 0
-        if root.children:
-            n = len(root.children)
-
-        # print(f'Root {root.data} has {n} kids')
-        # print(f'{n} kids -> {(n+1)/2.0} -> {(n+1)/2.0 - 1} -> {int((n+1)/2.0)}')
-        # rightKids = ', '.join([str(k.data) for k in root.children[:int((n+1)/2.0):-1]])
-        # print(f'Start printing right children from index: {int((n+1)/2.0)}: [{rightKids}]')
-        
-        # Process right children: First view tree:
-        #        --- ChildRight
-        #       |
-        # Root -
-        #       |
-        #        --- ChildLeft
-        #      2 456 8     ---
-        #     1     7      \s\s\s 
-        #       3          ||| 
-        # 12345678-2345678--345678
-        #         
-        # Process right children first (To be printed in lines above root, as print flips tree to left):
-        rightChildren = root.rightChildren()[::-1]
-        for childRoot in rightChildren:
-            output += TreeNode.print2DUtil(childRoot, space)
-
-        # Print current node after space
-        # count
-        output += '\n' # print()
         #Calculate the length of the space
         longSpace = ''
-        for i in range(TreeNode.PRINT_SPACE_COUNT[0], space):
+        for i in range(TreePrintable.PRINT_SPACE_COUNT[0], space):
             # print(end = " ") # end parameter tells it to append to end of current line rather than create a new line
             longSpace += ' '
 #           longSpace += '-'
@@ -204,51 +174,85 @@ class TreePrintable(ITreeNode):
         # remove last few spaces and replace with hyphens
         if len(longSpace) >= (TreePrintable.PRINT_HYPHEN_COUNT*2):
             longSpace = longSpace[:-1*TreePrintable.PRINT_HYPHEN_COUNT] + ('-'*TreePrintable.PRINT_HYPHEN_COUNT)
-        
-        # add line spacer edges '|' where parent nodes have further right siblings.
-        def _addSpacers(longSpace, ancestry):
-            for i,char in enumerate(range(TreePrintable.PRINT_HYPHEN_COUNT, len(longSpace), TreePrintable.PRINT_SPACE_COUNT)):
-                # First check for 
-                _parentNodeAtLvl = ancestry[i] # root.ancestorAtLevel(1) is root node
-                _parentsChildNodeAtLvl = ancestry[i+1] # Should be guaranteed this index by only enumerating the length of longSpace
-                
-                # Check if parentsChildNode is not the furthest right sibling:
-                if not _parentsChildNodeAtLvl.isLeftMostSibling():
-                    longSpace[char] = '|'
 
-                if -1 < _parentNodeAtLvl.children.index(_parentsChildNodeAtLvl) and _parentNodeAtLvl.children.index(_parentsChildNodeAtLvl) < len(_parentNodeAtLvl.children):
-                    # Not furthest right child, add '|'.
-                    longSpace[char] = '|'
-            return longSpace
-        
-        ancestry = root.ancestry()
-        longSpace = _addSpacers(longSpace, ancestry)
+        def _drawSubTrees(fromRight:bool, root, childRoot, space:int, longSpace:str):
+            _x = len(longSpace)+TreePrintable.PRINT_HYPHEN_COUNT
+            subTreesArr = TreePrintable._print2DUtilArr(childRoot, space)
+            nodeSubTrees = [subTreesArr.index(line) for line in subTreesArr if line[_x:_x+TreePrintable.PRINT_HYPHEN_COUNT] == ('-'*TreePrintable.PRINT_HYPHEN_COUNT)]
+            _out = []
+            if fromRight:
+                # slice = subTreesArr[min(nodeSubTrees):]
+                slice = range(min(nodeSubTrees),len(subTreesArr))
+            else:
+                # slice = subTreesArr[:max(nodeSubTrees)]
+                slice = range(0,max(nodeSubTrees))
+            for i,line in enumerate(subTreesArr):
+                if i in slice:
+                    if line[_x] == '-':
+                        pass
+                    elif line[_x] == ' ':
+                        line = line[:_x] + '|' + line[_x+1:]
+                _out.append(line)
+
+            return _out
+
+        # Process RIGHT CHILDREN first (To be printed in lines above root, as print flips tree to left):
+        rightChildren = root.rightChildren()[::-1]
+        for childRoot in rightChildren:
+            output += _drawSubTrees(True, root, childRoot, space, longSpace)
             
+        # Next Line: 
+        # outputStr += '\n' # print()
+        
+        
+        # # add line spacer edges '|' where parent nodes have further right siblings.
+        # def _addSpacers(longSpace, ancestry):
+        #     for i,char in enumerate(range(TreePrintable.PRINT_HYPHEN_COUNT, len(longSpace), TreePrintable.PRINT_SPACE_COUNT)):
+        #         # First check for 
+        #         _parentNodeAtLvl = ancestry[i] # root.ancestorAtLevel(1) is root node
+        #         _parentsChildNodeAtLvl = ancestry[i+1] # Should be guaranteed this index by only enumerating the length of longSpace
+                
+        #         # Check if parentsChildNode is not the furthest right sibling:
+        #         if not _parentsChildNodeAtLvl.isLeftMostSibling():
+        #             longSpace[char] = '|'
 
-        output += longSpace
+        #         if -1 < _parentNodeAtLvl.children.index(_parentsChildNodeAtLvl) and _parentNodeAtLvl.children.index(_parentsChildNodeAtLvl) < len(_parentNodeAtLvl.children):
+        #             # Not furthest right child, add '|'.
+        #             longSpace[char] = '|'
+        #     return longSpace
         
+        # ancestry = root.ancestry()
+        # longSpace = _addSpacers(longSpace, ancestry)
+        
+        # Print CURRENT NODE after space
         # add the tree node label
-        output += f'{root.name}' # print(root.name)
+        output += [f'{longSpace}{root.name}' + ('-'*max(TreePrintable.PRINT_HYPHEN_COUNT-len(f'{root.name}'),0)) + ('|' if len(f'{root.name}') <= TreePrintable.PRINT_HYPHEN_COUNT else '')]
         
-        # append to short tree labels
-        output += ('-'*max(TreePrintable.PRINT_HYPHEN_COUNT-len(f'{root.name}'),0)) + ('|' if len(f'{root.name}') <= TreePrintable.PRINT_HYPHEN_COUNT else '')
-        output += '\n'
-        longSpace = _addSpacers(longSpace, ancestry)
-        output += re.sub(r'-{'+str(TreePrintable.PRINT_HYPHEN_COUNT-1)+r'}$', '', longSpace, count=1)
+        # output += '\n'
+        # longSpace = _addSpacers(longSpace, ancestry)
+        
+        # Add a line break that looks like longspace but with one '|' instead of 4 '-'s at the end:
+        # output += re.sub(r'-{'+str(TreePrintable.PRINT_HYPHEN_COUNT)+r'}$', '|', longSpace, count=1)
 
         # Process left child
         leftChildren = root.leftChildren()[::-1]
         for childRoot in leftChildren:
-            output += TreeNode.print2DUtil(childRoot, space)
+            output += _drawSubTrees(False, root, childRoot, space, longSpace)
 
         return output
+
+    # 
+    def print2DUtil(root, space:int) -> str:
+        '''Function to print binary tree in 2D. \n
+        It does reverse inorder traversal'''
+        return '\n'.join(TreePrintable._print2DUtilArr(root,space))
 
     # Wrapper over print2DUtil()
     def print2D(root) :
         
         # space=[0]
         # Pass initial space count as 0
-        return TreeNode.print2DUtil(root, 0)
+        return TreePrintable.print2DUtil(root, 0)
 
 class TreeTraversable(ITreeNode):
 
