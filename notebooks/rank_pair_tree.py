@@ -221,6 +221,7 @@ class RankPairTree(object):
             'pathFrequency': 0, 
             'regexNodesInTreeDescendency': 0
             }
+        
         for ind, node in enumerate(allNodes):
             # Calculate the rank pair for each node, traverseInOrder guarantees that the parent is calculated first. Set on the data attribute not removing whats already there.
             if node.data['isRegexNode'] != True:
@@ -246,8 +247,12 @@ class RankPairTree(object):
             # If node is a leaf, i.e. no children, then record the rankpair result in an array
             if not node.children:
                 # leafRanks.append(node.data)
-                if node.data['pathFrequency'] >= maxRank['pathFrequency'] and node.data['regexNodesInTreeDescendency'] <= maxRank['regexNodesInTreeDescendency']:
+
+                if node.data['pathFrequency'] > maxRank['pathFrequency']:
                     maxRank = node.data
+                elif node.data['pathFrequency'] == maxRank['pathFrequency'] and node.data['regexNodesInTreeDescendency'] < maxRank['regexNodesInTreeDescendency']:
+                    maxRank = node.data
+        
 
             
             
@@ -368,9 +373,12 @@ def test_rankTree_2_urls():
     _testUrl2 = 'https://acme.com/forum?sid=QZ933'
     rankTree.embedUrl(_testUrl2)
     pprint(rankTree)
-    print(rankTree.TreeRank)
+    treeRank = rankTree.TreeRank
+    assert treeRank['isRegexNode'] == True, 'treeRank[\'isRegexNode\'] should be True'
+    assert treeRank['pathFrequency'] == True, 'treeRank[\'pathFrequency\'] should be 2'
+    assert treeRank['regexNodesInTreeDescendency'] == True, 'treeRank[\'regexNodesInTreeDescendency\'] should be 1'
 
 if __name__ == '__main__':
-    test_rankTree_builds_correct_layers()
+    test_rankTree_2_urls()
     
     
