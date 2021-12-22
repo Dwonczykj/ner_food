@@ -165,7 +165,7 @@ class RankPairTree(object):
             # Case 2
             # get child nodes if domain has already been embedded with other url(s)
             childNodesToAddTo = [childNode for nodeToAddTo in nodesToAddTo for childNode in nodeToAddTo.childrenAsRankPairNodes]
-            reNodes = [lrg for lrg in childNodesToAddTo if lrg.dataAsRankPair.isRegexNode and re.match(lrg.name, p)]
+            reNodes = [lrg for lrg in childNodesToAddTo if lrg.data['isRegexNode'] and re.match(lrg.name, p)]
             if reNodes:
                 newNodes = []
                 for rgxNode in reNodes:
@@ -256,7 +256,10 @@ class RankPairTree(object):
 
     TreeRank = property(getTreeRank)
 
-
+    def _getData(self):
+        return self._treeState.data
+    
+    data = property(_getData)
 
     def __repr__(self) -> str:
         return self._treeState.__repr__()
@@ -342,22 +345,32 @@ class RankPairTree(object):
             return None
     
 
-def rest_rankTree_builds_correct_layers():
+def test_rankTree_builds_correct_layers():
     
-    _testUrl = 'https://acme.com/forum'#?sid=QZ932'
+    _testUrl = 'https://acme.com/forum?sid=QZ932'
     rankTree = RankPairTree(_testUrl)
     pprint(rankTree)
     print(rankTree.TreeRank)
-    # assert rankTree.depth == 4, f'RankTree should have 4 layers for url: {_testUrl}, not {rankTree.depth}'
+    assert rankTree.depth == 4, f'RankTree should have 4 layers for url: {_testUrl}, not {rankTree.depth}'
+    assert rankTree.data['pathFrequency'] == 1 and rankTree.data['regexNodesInTreeDescendency'] == 0 
 
-def rest_rankTree_builds_correct_layers_complex():
+def test_rankTree_builds_correct_layers_complex():
     
     _testUrl = 'https://groceries.asda.com/product/natural-plain-organic/fage-total-fat-free-greek-recipe-natural-yogurt/24771357?sid=12534Q&style=green'
     rankTree = RankPairTree(_testUrl)
     pprint(rankTree)
     print(rankTree.TreeRank)
 
+def test_rankTree_2_urls():
+    
+    _testUrl = 'https://acme.com/forum?sid=QZ932'
+    rankTree = RankPairTree(_testUrl)
+    _testUrl2 = 'https://acme.com/forum?sid=QZ933'
+    rankTree.embedUrl(_testUrl2)
+    pprint(rankTree)
+    print(rankTree.TreeRank)
+
 if __name__ == '__main__':
-    rest_rankTree_builds_correct_layers_complex()
-    # TODO: Build rankpair data by traversing the tree in a get fashion
+    test_rankTree_builds_correct_layers()
+    
     
