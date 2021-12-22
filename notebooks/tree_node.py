@@ -128,14 +128,14 @@ class TreePrintable(ITreeNode):
         n = 0
         if self.children:
             n = len(self.children)
-        return self.children[int((n+1)/2.0):]
+        return self.children[int(n/2.0):]
 
     def leftChildren(self) -> list:
         # Get number of children to root
         n = 0
         if self.children:
             n = len(self.children)
-        return self.children[:int((n+1)/2.0)]
+        return self.children[:int(n/2.0)]
         
 
 
@@ -537,7 +537,7 @@ class TreeRootNodeBase(TreeRootNode, TreePrintable, TreeTraversable):
         return TreeNode.print2D(self)
 
     def __str__(self) -> str:
-        return str([node.name for node in self.traverseInorder()])
+        return str([node.name for node in self.traversePreorder()])
 
     def __hash__(self) -> int:
         return hash(str(self))

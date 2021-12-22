@@ -17,7 +17,7 @@ from pprint import pprint
 from tree_node import ITreeNode
 import abc
 
-from tree_node import TreeNode, TreeNodeRoot
+from tree_node import TreeNode, TreeNodeRoot, TreeRootNodeBase
 from url_parser import ParsedUrlParser
 
 
@@ -67,31 +67,55 @@ class IRankPairTreeNode(IRankPairTreeRootNode):
     def getNumSiblingsOfPathType(self):
         pass
 
+class RankPairTreeNodeSortable(TreeRootNodeBase):
 
-class RankPairTreeRootNode(TreeNodeRoot):
-    def __init__(self, name='root'):
-        # assert isinstance(data, RankPair) or data is None
-        super().__init__(name=name)
-        # self.dataAsRankPair: RankPair = data
     def getChildren(self):
         return super().getChildren()
     childrenAsRankPairNodes:list[IRankPairTreeRootNode] = property(getChildren)
-        
 
-    def getChildrenOfPathType(self):
-        return [n for n in self.childrenAsRankPairNodes if not n.data['isRegexNode']]
+    def sortChildren(self, sortPathsAlphabetically:bool=False):
+        '''Ensure the regex child is furthest right'''
+        if not self.children:
+            return
+        # for ind,cNode in enumerate(self.childrenAsRankPairNodes):
+        #     if cNode.data['isRegexNode'] == True:
+        if sortPathsAlphabetically:
+            self._children.sort(key=lambda c: c.name)
+        self._children.sort(key=lambda c: c.data['isRegexNode'])
+
+    def traversePreorder(self):
+        result: list[RankPairTreeNode] = super().traversePreorder()
+        return result
+
+    def traverseInorder(self):
+        result: list[RankPairTreeNode] = super().traverseInorder()
+        return result
+                
+    def traversePostorder(self):
+        result: list[RankPairTreeNode] = super().traversePostorder()
+        return result
 
 
-class RankPairTreeNode(TreeNode):
+class RankPairTreeRootNode(TreeNodeRoot, RankPairTreeNodeSortable):
+    def __init__(self, name='root'):
+        # assert isinstance(data, RankPair) or data is None
+        super().__init__(name=name)
+        # self.dataAsRankPair: RankPair = data
+    # def getChildren(self):
+    #     return super().getChildren()
+    # childrenAsRankPairNodes:list[IRankPairTreeRootNode] = property(getChildren)
+
+
+class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable):
     def __init__(self, name='root'):
         # assert isinstance(data, RankPair) or data is None
         super().__init__(name=name)
         # self.dataAsRankPair: RankPair = data
         
         
-    def getChildren(self):
-        return super().getChildren()
-    childrenAsRankPairNodes:list[IRankPairTreeNode] = property(getChildren)
+    # def getChildren(self):
+    #     return super().getChildren()
+    # childrenAsRankPairNodes:list[IRankPairTreeNode] = property(getChildren)
 
     def getParent(self):
         x:RankPairTreeNode = super().getParent()
@@ -103,6 +127,30 @@ class RankPairTreeNode(TreeNode):
         instance.data = state.data
         #TODO: FIX this
         instance._children = state._children 
+
+    # def sortChildren(self, sortPathsAlphabetically:bool=False):
+    #     '''Ensure the regex child is furthest right'''
+    #     if not self.children:
+    #         return
+    #     # for ind,cNode in enumerate(self.childrenAsRankPairNodes):
+    #     #     if cNode.data['isRegexNode'] == True:
+    #     self._children.sort(key=lambda c: c.data['isRegexNode'])
+
+
+    # def traversePreorder(self):
+    #     result: list[RankPairTreeNode] = super().traversePreorder()
+    #     return result
+
+    # def traverseInorder(self):
+    #     result: list[RankPairTreeNode] = super().traverseInorder()
+    #     return result
+                
+    # def traversePostorder(self):
+    #     result: list[RankPairTreeNode] = super().traversePostorder()
+    #     return result
+                
+
+        
 
 
 class RankPairTreeRegexNode(RankPairTreeNode):
@@ -180,15 +228,6 @@ class RankPairTree(object):
             # Case 3
             newNodes = []
             for nodeToAddTo in nodesToAddTo:
-                # 1. Add a PathRegexnode to parent
-                # 2. create a path node with access to the regexCount of the regexNode
-                    # Instead, update the data property on the node when adding the child to its parent.
-                # 3. add the path node
-                # 4. readd the regex node again
-                # 5. REFACTOR:- RootNode is different Type to TreeNode which is the generic type. RootNode and TreeNode inherit from ITreeNode
-                #       Then enforce all parent adding logic to be done through the TreeNode.addChild function on TreeNodeWChildren class and remove all parent setting capability
-                #       Additionallyy, add teh data attribute in the rankPairTree.addChild function.
-                #TODO! TreeNodebase dont inherit treeChildNode as can be a rootnode...
                 parentNode = nodeToAddTo
                 pathRegexNode = RankPairTreeRegexNode(name=(RankPairTree._getSubRePattern(p) or regx))
                 pathTextNode = RankPairTreePathNode(sisterRegexNode=pathRegexNode, name=p)
@@ -212,6 +251,13 @@ class RankPairTree(object):
                 nodesToAddTo = _f(qv, qvRgx, nodesToAddTo)
 
         return self
+
+    def sortTree(self, sortPathsAlphabetically:bool=False):
+        allNodes = self._treeState.traversePreorder()
+        for node in allNodes:
+            if node.children:
+                node.sortChildren()
+
 
     def getTreeRank(self):
         allNodes = self._treeState.traversePreorder()
@@ -372,11 +418,12 @@ def test_rankTree_2_urls():
     rankTree = RankPairTree(_testUrl)
     _testUrl2 = 'https://acme.com/forum?sid=QZ933'
     rankTree.embedUrl(_testUrl2)
-    pprint(rankTree)
     treeRank = rankTree.TreeRank
     assert treeRank['isRegexNode'] == True, 'treeRank[\'isRegexNode\'] should be True'
-    assert treeRank['pathFrequency'] == True, 'treeRank[\'pathFrequency\'] should be 2'
-    assert treeRank['regexNodesInTreeDescendency'] == True, 'treeRank[\'regexNodesInTreeDescendency\'] should be 1'
+    assert treeRank['pathFrequency'] == 2, 'treeRank[\'pathFrequency\'] should be 2'
+    assert treeRank['regexNodesInTreeDescendency'] == 1, 'treeRank[\'regexNodesInTreeDescendency\'] should be 1'
+    rankTree.sortTree()
+    pprint(rankTree)
 
 if __name__ == '__main__':
     test_rankTree_2_urls()
