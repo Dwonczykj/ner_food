@@ -3,7 +3,8 @@ from os import path
 import io
 import os
 import re
-from typing import overload
+from typing import Tuple, overload
+from PyQt5.QtCore import False_
 import requests
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,6 +17,7 @@ import warnings
 from pprint import pprint
 from tree_node import ITreeNode
 import abc
+from __future__ import annotations
 
 from tree_node import TreeNode, TreeNodeRoot, TreeRootNodeBase
 from url_parser import ParsedUrlParser
@@ -96,15 +98,6 @@ class RankPairTreeNodeSortable(TreeRootNodeBase):
         return result
 
 
-class RankPairTreeRootNode(TreeNodeRoot, RankPairTreeNodeSortable):
-    def __init__(self, name='root'):
-        # assert isinstance(data, RankPair) or data is None
-        super().__init__(name=name)
-        # self.dataAsRankPair: RankPair = data
-    # def getChildren(self):
-    #     return super().getChildren()
-    # childrenAsRankPairNodes:list[IRankPairTreeRootNode] = property(getChildren)
-
 
 class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable):
     def __init__(self, name='root'):
@@ -117,16 +110,23 @@ class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable):
     #     return super().getChildren()
     # childrenAsRankPairNodes:list[IRankPairTreeNode] = property(getChildren)
 
-    def getParent(self):
-        x:RankPairTreeNode = super().getParent()
-        return x
-    parentAsRankPairNode:list[IRankPairTreeNode] = property(getParent)
+    def getParent(self) -> RankPairTreeRootNode:
+        return super().getParent()
+        
+    parentAsRankPairNode:RankPairTreeRootNode = property(getParent)
+    
+    def getChildren(self:type[RankPairTreeRootNode]):
+        return super().getChildren()
+    
+    children:list[RankPairTreeNode] = property(getChildren)
 
-    def withChildrenState(state:TreeNode):
+    def withChildrenState(state:RankPairTreeNode) -> RankPairTreeNode:
         instance = RankPairTreeNode(name=state.name)
         instance.data = state.data
-        #TODO: FIX this
-        instance._children = state._children 
+        for child in state.children:
+            instance.appendChild(RankPairTreeNode.withChildrenState(child.children))
+        return instance
+        # instance._children = state._children 
 
     # def sortChildren(self, sortPathsAlphabetically:bool=False):
     #     '''Ensure the regex child is furthest right'''
@@ -150,7 +150,22 @@ class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable):
     #     return result
                 
 
-        
+class RankPairTreeRootNode(TreeNodeRoot, RankPairTreeNodeSortable):
+    def __init__(self, name='root'):
+        # assert isinstance(data, RankPair) or data is None
+        super().__init__(name=name)
+        # self.dataAsRankPair: RankPair = data
+    def getChildren(self:type[RankPairTreeRootNode]):
+        return super().getChildren()
+    # childrenAsRankPairNodes:list[IRankPairTreeRootNode] = property(getChildren)
+    children:list[RankPairTreeNode] = property(getChildren)       
+
+    def withChildrenState(state) -> RankPairTreeRootNode:
+        instance = RankPairTreeRootNode(name=state.name)
+        instance.data = state.data
+        for child in state.children:
+            instance.appendChild(RankPairTreeNode.withChildrenState(child.children))
+        return instance
 
 
 class RankPairTreeRegexNode(RankPairTreeNode):
@@ -172,31 +187,66 @@ class RankPairTreePathNode(RankPairTreeNode):
 
 class RankPairTree(object):
 
-    def __init__(self, url:str):
+    def __init__(self, url:str=None):
         # super.__init__(self)
-        self._urlParser = None
-        self._treeState = None
-        self.embedUrl(url)
+        self._urlParser:ParsedUrlParser = None
+        self._treeState:RankPairTreeRootNode = None
+        self.initialised:bool = False
+        if url is not None:
+            self.embedUrl(url)
+            self.initialised = True
+        
+    def fromState(treeState:RankPairTreeRootNode) -> RankPairTree:
+        instance = RankPairTree()
+        instance._treeState = treeState
+        instance.initialised = (treeState.name is not None)
+        return instance
+
+    def copyDeep(self) -> RankPairTree:
+        return RankPairTree.fromState(self._treeState)
+
 
     def embedUrl(self, url:str):
-        self._urlParser = ParsedUrlParser(url)
-        self._urlParser.parseUrl()
+        return self._processUrl(url, embed=True)[0]
+
+    def containsGeneralisationOf(self, url:str):
+        return self._processUrl(url, embed=False)[1]
+
+    def _processUrl(self, url:str, embed:bool) -> Tuple[RankPairTree,bool]:
+        '''If embed, bake url into self and return self, else bake url into a copy of self and return the copy.'''
+        instance:RankPairTree=None
+        containsGeneralisationOfUrl:bool = False
+        if embed:
+            # _treeState:RankPairTreeRootNode = self._treeState
+            instance = self
+            assert self.__hash__() == instance.__hash__()
+        else:
+            # _treeState:RankPairTreeRootNode=RankPairTreeNode.withChildrenState(self._treeState)
+            instance = self.copyDeep()
         
-        if self._treeState is None:
-            self._treeState = RankPairTreeRootNode(
-                name=self._urlParser.parsedUrl.domain
+        _urlParser = ParsedUrlParser(url)
+        _urlParser.parseUrl()
+        
+        self._urlParser = _urlParser
+        instance._urlParser = _urlParser
+
+        assert self._urlParser.__hash__() == instance._urlParser.__hash__()
+
+        if instance._treeState is None:
+            instance._treeState = RankPairTreeRootNode(
+                name=instance._urlParser.parsedUrl.domain
                 )
-        elif self._treeState.name != self._urlParser.parsedUrl.domain:
-            self._treeState = RankPairTreeRootNode(
+        elif instance._treeState.name != instance._urlParser.parsedUrl.domain:
+            instance._treeState = RankPairTreeRootNode(
                 name=RankPairTree.TREE_ROOT_MULTI_DOMAIN_NAME,
                 children=[
-                    RankPairTreeNode.withChildrenState(self._treeState),
-                    RankPairTreeNode(self._urlParser.parsedUrl.domain)
+                    RankPairTreeNode.withChildrenState(instance._treeState) if embed else instance._treeState,
+                    RankPairTreeNode(instance._urlParser.parsedUrl.domain)
                 ])
         
-        nodeToAddTo = self.getDomainNode()
+        nodeToAddTo = instance.getDomainNode()
 
-        def _f(p:str,regx:str, nodesToAddTo:list[RankPairTreeNode]):
+        def _f(p:str,regx:str, nodesToAddTo:list[RankPairTreeNode]) -> Tuple[list[RankPairTreeNode],bool]:
             '''We are only adding text and regex nodes on all leaves when it is a new domain tree.\n
             Otherwise we only add paths and potentially regex when the tree does NOT already contain them.'''
             
@@ -208,25 +258,25 @@ class RankPairTree(object):
             matchingPathLeaves = [x for n in pathNodes if n.name == p for x in [n,n.sisterRegexNode]]
             if matchingPathLeaves:
                 existingNodesContainingUrlPath = matchingPathLeaves
-                return existingNodesContainingUrlPath
+                return (existingNodesContainingUrlPath, True)
             
             # Case 2
             # get child nodes if domain has already been embedded with other url(s)
             childNodesToAddTo = [childNode for nodeToAddTo in nodesToAddTo for childNode in nodeToAddTo.childrenAsRankPairNodes]
             reNodes = [lrg for lrg in childNodesToAddTo if lrg.data['isRegexNode'] and re.match(lrg.name, p)]
             if reNodes:
-                newNodes = []
+                newNodes:list[RankPairTreeNode] = []
                 for rgxNode in reNodes:
                     # add new path node to rgxLeaf.parent
-                    pathnode = RankPairTreePathNode(sisterRegexNode=rgxNode,name=p) #link the path node to regexLeaf
+                    pathnode = RankPairTreePathNode(sisterRegexNode=rgxNode, name=p) #link the path node to regexLeaf
                     rgxNode.parent.appendChild(pathnode) 
                     # rgxNode.dataAsRankPair.incrementPathFreq()
                     newNodes.append(pathnode)
                     newNodes.append(rgxNode)
-                return newNodes
+                return (newNodes, True)
             
             # Case 3
-            newNodes = []
+            newNodes:list[RankPairTreeNode] = []
             for nodeToAddTo in nodesToAddTo:
                 parentNode = nodeToAddTo
                 pathRegexNode = RankPairTreeRegexNode(name=(RankPairTree._getSubRePattern(p) or regx))
@@ -235,29 +285,35 @@ class RankPairTree(object):
                 .appendChild(pathTextNode)
                 .appendChild(pathRegexNode))
                 newNodes += [pathTextNode, pathRegexNode]
-            return newNodes
+            return (newNodes, False)
 
         nodesToAddTo = [nodeToAddTo]
-        
-        for trgx in self._urlParser.parsedUrl.paths:
+        pathMatchedGeneralisation = True
+        for trgx in instance._urlParser.parsedUrl.paths:
             p,regx = (trgx.text, trgx.regexPatrn)
-            nodesToAddTo = _f(p, regx, nodesToAddTo)
+            nodesToAddTo, pathMatchedGeneralisation = _f(p, regx, nodesToAddTo)
+        containsGeneralisationOfUrl = pathMatchedGeneralisation
             
 
-        for (qk_trgx, qv_trgx) in self._urlParser.parsedUrl.queries:
+        for (qk_trgx, qv_trgx) in instance._urlParser.parsedUrl.queries:
             (qk, qkRgx),(qv, qvRgx) = (qk_trgx.text, qk_trgx.regexPatrn), (qv_trgx.text, qv_trgx.regexPatrn)
-            nodesToAddTo = _f(qk, qkRgx, nodesToAddTo)
+            nodesToAddTo,pathQueryMatchedGeneralisation = _f(qk, qkRgx, nodesToAddTo)
             if qv:
-                nodesToAddTo = _f(qv, qvRgx, nodesToAddTo)
+                nodesToAddTo,pathQueryMatchedGeneralisation = _f(qv, qvRgx, nodesToAddTo)
 
-        return self
+        if not instance.initialised:
+            instance.initialised = True
+
+        if embed:
+            assert self.__hash_() == instance.__hash__()
+        
+        return (instance, containsGeneralisationOfUrl)
 
     def sortTree(self, sortPathsAlphabetically:bool=False):
         allNodes = self._treeState.traversePreorder()
         for node in allNodes:
             if node.children:
                 node.sortChildren()
-
 
     def getTreeRank(self):
         allNodes = self._treeState.traversePreorder()
