@@ -401,137 +401,6 @@ class TreeRootNodeBase(TreeRootNode, TreePrintable, TreeTraversable):
         if children is not None:
             for child in children:
                 self.appendChild(child)
-
-    # def addChild(self, node:TreeChildNode):
-    #     self.appendChild(node)
-
-
-    # PRINT_SPACE_COUNT = [8] # == 2 tabs
-
-    # # Function to print binary tree in 2D
-    # # It does reverse inorder traversal
-    # def print2DUtil(root, space:int) -> str:
-
-    #     output = ''
-
-    #     # Base case
-    #     if (root == None):
-    #         return ''
-
-    #     # Increase distance between levels
-    #     space += TreeRootNodeBase.PRINT_SPACE_COUNT[0]
-
-    #     # Get number of children to root
-    #     n = 0
-    #     if root.children:
-    #         n = len(root.children)
-
-    #     # print(f'Root {root.data} has {n} kids')
-    #     # print(f'{n} kids -> {(n+1)/2.0} -> {(n+1)/2.0 - 1} -> {int((n+1)/2.0)}')
-    #     # rightKids = ', '.join([str(k.data) for k in root.children[:int((n+1)/2.0):-1]])
-    #     # print(f'Start printing right children from index: {int((n+1)/2.0)}: [{rightKids}]')
-        
-    #     # Process right children first
-    #     for childRoot in root.children[:int((n+1)/2.0)-1:-1]:
-    #         output += TreeNode.print2DUtil(childRoot, space)
-
-    #     # Print current node after space
-    #     # count
-    #     output += '\n' # print()
-    #     for i in range(TreeNode.PRINT_SPACE_COUNT[0], space):
-    #         # print(end = " ") # end parameter tells it to append to end of current line rather than create a new line
-    #         output += ' '
-    #     output += f'{root.name}' # print(root.name)
-
-    #     # Process left child
-    #     for childRoot in root.children[int((n+1)/2.0)-1::-1]:
-    #         output += TreeNode.print2DUtil(childRoot, space)
-
-    #     return output
-
-    # # Wrapper over print2DUtil()
-    # def print2D(root) :
-        
-    #     # space=[0]
-    #     # Pass initial space count as 0
-    #     return TreeNode.print2DUtil(root, 0)
-
-    # # A function to do inorder tree traversal
-    # def traverseInorder(self):
-
-    #     output:list[TreeNode] = []
-
-    #     if self:
-
-    #         # Get number of children to root
-    #         n = 0
-    #         if self.children:
-    #             n = len(self.children)
-
-    #         # First recur on left child
-    #         for childRoot in self.children[int((n+1)/2.0)-1::-1]:
-    #             output += childRoot.traverseInorder()
-
-    #         # then print the name of node
-    #         output += [self]
-
-    #         # now recur on right child
-    #         for childRoot in self.children[:int((n+1)/2.0)-1:-1]:
-    #             output += childRoot.traverseInorder()
-            
-        
-    #     return output
-
-
-    # # A function to do postorder tree traversal
-    # def traversePostorder(self):
-
-    #     output:list[TreeNode] = []
-
-    #     if self:
-
-    #         # Get number of children to self
-    #         n = 0
-    #         if self.children:
-    #             n = len(self.children)
-
-    #         # First recur on left child
-    #         for childRoot in self.children[int((n+1)/2.0)-1::-1]:
-    #             output += childRoot.traversePostorder()
-
-    #         # the recur on right child
-    #         for childRoot in self.children[:int((n+1)/2.0)-1:-1]:
-    #             output += childRoot.traversePostorder()
-
-    #         # now print the data of node
-    #         output += [self]
-
-    #     return output
-
-    # # A function to do preorder tree traversal
-    # def traversePreorder(self):
-
-    #     output:list[TreeNode] = []
-
-    #     if self:
-
-    #         # Get number of children to root
-    #         n = 0
-    #         if self.children:
-    #             n = len(self.children)
-
-    #         # First print the data of node
-    #         output += [self]
-
-    #         # Then recur on left child
-    #         for childRoot in self.children[int((n+1)/2.0)-1::-1]:
-    #             output += childRoot.traversePreorder()
-
-    #         # Finally recur on right child
-    #         for childRoot in self.children[:int((n+1)/2.0)-1:-1]:
-    #             output += childRoot.traversePreorder()
-
-    #     return output
     
     def __repr__(self):
         return TreeNode.print2D(self)
@@ -551,7 +420,7 @@ class TreeRootNodeBase(TreeRootNode, TreePrintable, TreeTraversable):
         else:
             return 1
 
-    numberOfLayers = property(getNumberLayers)
+    numberOfLayers:int = property(getNumberLayers)
 
     def getLeaves(self):
         _leaves = []

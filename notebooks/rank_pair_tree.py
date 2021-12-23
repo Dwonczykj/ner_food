@@ -1,10 +1,10 @@
+from __future__ import annotations
 from operator import countOf
 from os import path
 import io
 import os
 import re
 from typing import Tuple, overload
-from PyQt5.QtCore import False_
 import requests
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,7 +17,7 @@ import warnings
 from pprint import pprint
 from tree_node import ITreeNode
 import abc
-from __future__ import annotations
+
 
 from tree_node import TreeNode, TreeNodeRoot, TreeRootNodeBase
 from url_parser import ParsedUrlParser
@@ -210,7 +210,7 @@ class RankPairTree(object):
         return self._processUrl(url, embed=True)[0]
 
     def containsGeneralisationOf(self, url:str):
-        return self._processUrl(url, embed=False)[1]
+        return self._processUrl(url, embed=False)[1] if self.initialised else False
 
     def _processUrl(self, url:str, embed:bool) -> Tuple[RankPairTree,bool]:
         '''If embed, bake url into self and return self, else bake url into a copy of self and return the copy.'''
@@ -222,7 +222,10 @@ class RankPairTree(object):
             assert self.__hash__() == instance.__hash__()
         else:
             # _treeState:RankPairTreeRootNode=RankPairTreeNode.withChildrenState(self._treeState)
-            instance = self.copyDeep()
+            if self.initialised:
+                instance = self.copyDeep()
+            else:
+                instance = RankPairTree(url)
         
         _urlParser = ParsedUrlParser(url)
         _urlParser.parseUrl()
@@ -305,7 +308,7 @@ class RankPairTree(object):
             instance.initialised = True
 
         if embed:
-            assert self.__hash_() == instance.__hash__()
+            assert self.__hash__() == instance.__hash__()
         
         return (instance, containsGeneralisationOfUrl)
 
@@ -373,6 +376,9 @@ class RankPairTree(object):
     
     def __str__(self) -> str:
         return self._treeState.__str__()
+
+    # def __hash__(self) -> int:
+    #     return self._treeState.__hash__()
     
     def getChildren(self):
         return self._treeState.children
