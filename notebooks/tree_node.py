@@ -1,3 +1,4 @@
+from __future__ import annotations
 from operator import add
 from os import path, setpgid
 import io
@@ -439,7 +440,7 @@ class TreeChildNode(TreeRootNodeBase):
         return self._parent
     # def setParent(self,parent):
     #     self._parent = parent
-    parent = property(getParent)
+    parent:TreeChildNode = property(getParent)
 
     def getSiblingsOfPathType(self):
         return [n for n in self.parent.childrenAsRankPairNodes if not n.data['isRegexNode']]

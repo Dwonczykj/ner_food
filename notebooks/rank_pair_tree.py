@@ -114,6 +114,7 @@ class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable):
         return super().getParent()
         
     parentAsRankPairNode:RankPairTreeRootNode = property(getParent)
+    parent:RankPairTreeRootNode = property(getParent)
     
     def getChildren(self:type[RankPairTreeRootNode]):
         return super().getChildren()
@@ -127,6 +128,22 @@ class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable):
             instance.appendChild(RankPairTreeNode.withChildrenState(child.children))
         return instance
         # instance._children = state._children 
+
+    def ancestry(self) -> list[RankPairTreeNode]:
+        ancestor = self
+        ancestry:list[RankPairTreeNode] = [ancestor]
+        i = 0
+        while i <= 99 and hasattr(ancestor, 'parent'):
+            i += 1
+            ancestor = getattr(ancestor, 'parent')
+            ancestry = [ancestor] + ancestry
+        return ancestry
+    
+
+    def getFullNameFromRoot(self):
+        return ''.join([(f'/{a.name}' if isinstance(a,RankPairTreePathNode) else a.name) for a in self.ancestry()])
+
+    fullNameFromRoot:str = property(getFullNameFromRoot)
 
     # def sortChildren(self, sortPathsAlphabetically:bool=False):
     #     '''Ensure the regex child is furthest right'''
@@ -210,9 +227,12 @@ class RankPairTree(object):
         return self._processUrl(url, embed=True)[0]
 
     def containsGeneralisationOf(self, url:str):
-        return self._processUrl(url, embed=False)[1] if self.initialised else False
+        return bool(self._processUrl(url, embed=False)[1]) if self.initialised else False
 
-    def _processUrl(self, url:str, embed:bool) -> Tuple[RankPairTree,bool]:
+    def getExampleGeneralisationOf(self, url:str):
+        return (self._processUrl(url, embed=False)[1]) if self.initialised else None
+
+    def _processUrl(self, url:str, embed:bool) -> Tuple[RankPairTree,str]:
         '''If embed, bake url into self and return self, else bake url into a copy of self and return the copy.'''
         instance:RankPairTree=None
         containsGeneralisationOfUrl:bool = False
@@ -261,12 +281,12 @@ class RankPairTree(object):
             matchingPathLeaves = [x for n in pathNodes if n.name == p for x in [n,n.sisterRegexNode]]
             if matchingPathLeaves:
                 existingNodesContainingUrlPath = matchingPathLeaves
-                return (existingNodesContainingUrlPath, True)
+                return (existingNodesContainingUrlPath, matchingPathLeaves[0].fullNameFromRoot)
             
             # Case 2
             # get child nodes if domain has already been embedded with other url(s)
             childNodesToAddTo = [childNode for nodeToAddTo in nodesToAddTo for childNode in nodeToAddTo.childrenAsRankPairNodes]
-            reNodes = [lrg for lrg in childNodesToAddTo if lrg.data['isRegexNode'] and re.match(lrg.name, p)]
+            reNodes:list[RankPairTreeRegexNode] = [lrg for lrg in childNodesToAddTo if lrg.data['isRegexNode'] and re.match(lrg.name, p)]
             if reNodes:
                 newNodes:list[RankPairTreeNode] = []
                 for rgxNode in reNodes:
@@ -276,7 +296,7 @@ class RankPairTree(object):
                     # rgxNode.dataAsRankPair.incrementPathFreq()
                     newNodes.append(pathnode)
                     newNodes.append(rgxNode)
-                return (newNodes, True)
+                return (newNodes, reNodes[0].parent.fullNameFromRoot + '/'+ p)
             
             # Case 3
             newNodes:list[RankPairTreeNode] = []
@@ -288,10 +308,11 @@ class RankPairTree(object):
                 .appendChild(pathTextNode)
                 .appendChild(pathRegexNode))
                 newNodes += [pathTextNode, pathRegexNode]
-            return (newNodes, False)
+            return (newNodes, None)
 
         nodesToAddTo = [nodeToAddTo]
         pathMatchedGeneralisation = True
+        generalisationOfUrl:str=None
         for trgx in instance._urlParser.parsedUrl.paths:
             p,regx = (trgx.text, trgx.regexPatrn)
             nodesToAddTo, pathMatchedGeneralisation = _f(p, regx, nodesToAddTo)
@@ -300,6 +321,7 @@ class RankPairTree(object):
 
         for (qk_trgx, qv_trgx) in instance._urlParser.parsedUrl.queries:
             (qk, qkRgx),(qv, qvRgx) = (qk_trgx.text, qk_trgx.regexPatrn), (qv_trgx.text, qv_trgx.regexPatrn)
+            #TODO: Specify in _f that these are Query nodes, not PathNodes or Domain Nodes so that we can print the full url appropriately
             nodesToAddTo,pathQueryMatchedGeneralisation = _f(qk, qkRgx, nodesToAddTo)
             if qv:
                 nodesToAddTo,pathQueryMatchedGeneralisation = _f(qv, qvRgx, nodesToAddTo)
@@ -310,7 +332,7 @@ class RankPairTree(object):
         if embed:
             assert self.__hash__() == instance.__hash__()
         
-        return (instance, containsGeneralisationOfUrl)
+        return (instance, generalisationOfUrl)
 
     def sortTree(self, sortPathsAlphabetically:bool=False):
         allNodes = self._treeState.traversePreorder()
@@ -478,6 +500,7 @@ def test_rankTree_2_urls():
     
     _testUrl = 'https://acme.com/forum?sid=QZ932'
     rankTree = RankPairTree(_testUrl)
+    assert rankTree._treeState.children[1].fullNameFromRoot.startswith('https://acme.com/')
     _testUrl2 = 'https://acme.com/forum?sid=QZ933'
     rankTree.embedUrl(_testUrl2)
     treeRank = rankTree.TreeRank
