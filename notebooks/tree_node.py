@@ -4,6 +4,7 @@ from os import path, setpgid
 import io
 import os
 import re
+from typing import Optional
 import requests
 import numpy as np
 import matplotlib.pyplot as plt
@@ -364,12 +365,15 @@ class TreeRootNode(ITreeChildNode):
         return self._children
     children = property(getChildren)
 
-    def appendChild(self, node:ITreeChildNode):
+    def appendChild(self, node:ITreeChildNode, atPosition:Optional[int]=None):
         assert isinstance(node, ITreeChildNode), 'can only add TreeNode children'
-        assert node.parent is None or node.parent == self, f'TreeNode: ({node.name}) can only have one parent. Already has parent with name: {node.parent.name}, so cant set self as parent with name: {self.name}'
+        assert hasattr(node,'parent') == False or node.parent is None or node.parent == self, f'TreeNode: ({node.name}) can only have one parent. Already has parent with name: {node.parent.name}, so cant set self as parent with name: {self.name}'
         
         if node not in self._children:
-            self._children.append(node)
+            if atPosition is not None:
+                self._children = self._children[:atPosition] + [node] + self._children[atPosition:]
+            else:
+                self._children.append(node)
             node.acceptParent(self)
         else:
             debug.breakpoint()
@@ -377,9 +381,9 @@ class TreeRootNode(ITreeChildNode):
         
         return self
     
-    def appendChildren(self, addChilds:list):
-        for c in addChilds:
-            self.appendChild(c)
+    # def appendChildren(self, addChilds:list):
+    #     for c in addChilds:
+    #         self.appendChild(c)
 
     def acceptParent(self, parentNode:ITreeChildNode) -> bool:
         if self in parentNode.children:
