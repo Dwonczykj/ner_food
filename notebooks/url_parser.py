@@ -80,6 +80,8 @@ class ParsedUrlParser():
     reNoCapt = '' if captureUrlComponents else '?:'
     reCondProtcl = '' if requireUrlProtocol else '?'
 
+    #TODO: Use one big regex with named captures for each part of the url, then for match.groupDict()['paths'] say, run the path_match regex below on a find_iter style
+
     URL_DOMAIN_MATCH = r'^(({0}({0}http[s]?|ftp):\/\/){1}({0}[^:\/\s]+))'.format(reNoCapt, reCondProtcl)
 
     URL_PATH_MATCH = r'^(({0}\/[\w-]+))'.format(reNoCapt)

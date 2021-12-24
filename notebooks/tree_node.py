@@ -54,32 +54,32 @@ class ITreeNode(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def getDepth(self) -> int:
+    def getDepth(self) -> Uint:
         pass
 
     @abc.abstractmethod
-    def numberOfLayers():
+    def numberOfLayers() -> Uint:
         pass
 
     @abc.abstractmethod
-    def getLeaves(self):
+    def getLeaves(self) -> list[ITreeNode]:
         pass
 
     @abc.abstractmethod
-    def getChildren(self) -> list:
+    def getChildren(self) -> list[ITreeNode]:
         pass
 
     @property
     @abc.abstractmethod
-    def children() -> list:
+    def children() -> list[ITreeNode]:
         pass
 
     @abc.abstractmethod
-    def rightChildren() -> list:
+    def rightChildren() -> list[ITreeNode]:
         pass
 
     @abc.abstractmethod
-    def leftChildren() -> list:
+    def leftChildren() -> list[ITreeNode]:
         pass
 
 
@@ -443,7 +443,7 @@ class TreeChildNode(TreeRootNodeBase):
     parent:TreeChildNode = property(getParent)
 
     def getSiblingsOfPathType(self):
-        return [n for n in self.parent.childrenAsRankPairNodes if not n.data['isRegexNode']]
+        return [n for n in self.parent.children if not n.data['isRegexNode']]
 
     def getNumSiblingsOfPathType(self):
         return len(self.getSiblingsOfPathType())

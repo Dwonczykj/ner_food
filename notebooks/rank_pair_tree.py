@@ -4,7 +4,7 @@ from os import path
 import io
 import os
 import re
-from typing import Tuple, overload
+from typing import Literal, Tuple, overload
 import requests
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,6 +17,8 @@ import warnings
 from pprint import pprint
 from tree_node import ITreeNode
 import abc
+from url_parser import UrlMatchEnum
+from py_utils import nullPipe
 
 
 from tree_node import TreeNode, TreeNodeRoot, TreeRootNodeBase
@@ -73,7 +75,7 @@ class RankPairTreeNodeSortable(TreeRootNodeBase):
 
     def getChildren(self):
         return super().getChildren()
-    childrenAsRankPairNodes:list[IRankPairTreeRootNode] = property(getChildren)
+    childrenAsRankPairNodes:list[RankPairTreeNode] = property(getChildren)
 
     def sortChildren(self, sortPathsAlphabetically:bool=False):
         '''Ensure the regex child is furthest right'''
@@ -97,9 +99,16 @@ class RankPairTreeNodeSortable(TreeRootNodeBase):
         result: list[RankPairTreeNode] = super().traversePostorder()
         return result
 
+class RankPairTreeUrlBuilder(abc.ABC):
+
+    @abc.abstractmethod
+    def _getUrlSegment(self):
+        pass
+
+    urlSegment = property(_getUrlSegment)
 
 
-class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable):
+class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable, RankPairTreeUrlBuilder):
     def __init__(self, name='root'):
         # assert isinstance(data, RankPair) or data is None
         super().__init__(name=name)
@@ -116,10 +125,47 @@ class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable):
     parentAsRankPairNode:RankPairTreeRootNode = property(getParent)
     parent:RankPairTreeRootNode = property(getParent)
     
+    def getParentIfGrandParent(self):
+        parentIfGrandParent:RankPairTreeNode = None
+        if hasattr(self.parent, 'parent') and self.parent.parent is not None:
+            parentIfGrandParent = self.parent
+        
+        return parentIfGrandParent
+    parentWithParents:RankPairTreeNode = property(getParentIfGrandParent)
+    
     def getChildren(self:type[RankPairTreeRootNode]):
         return super().getChildren()
     
     children:list[RankPairTreeNode] = property(getChildren)
+
+    def getSiblingsOfPathType(self) -> list[RankPairTreeTextNode]:
+        return [n for n in self.parent.children if not n.data['isRegexNode']]
+
+    def _getUrlSegmentType(self) -> UrlMatchEnum:
+        otherChildren = self.getSiblingsOfPathType()
+        if otherChildren:
+            otherChild = otherChildren[0]
+            if isinstance(otherChild, RankPairTreePathNode):
+                return UrlMatchEnum.URL_PATH
+            elif isinstance(otherChild, RankPairTreeQueryKeyNode):
+                return UrlMatchEnum.URL_QUERY_KEY
+            elif isinstance(otherChild, RankPairTreeQueryValueNode):
+                return UrlMatchEnum.URL_QUERY_VALUE
+            elif isinstance(otherChild, RankPairTreeQueryFlagNode):
+                return UrlMatchEnum.URL_PARSING_SYMBOL
+            elif isinstance(otherChild, RankPairTreeDomainNode):
+                return UrlMatchEnum.URL_DOMAIN
+            else:
+                return UrlMatchEnum.URL_PROTOCOL # TODO: Add Undefined Flag
+        else:
+            return UrlMatchEnum.URL_DOMAIN
+
+    nodeType:UrlMatchEnum = property(_getUrlSegmentType)
+
+    def _getUrlSegment(self):
+        return f'{self.name}'
+    
+    urlSegment = property(_getUrlSegment)
 
     def withChildrenState(state:RankPairTreeNode) -> RankPairTreeNode:
         instance = RankPairTreeNode(name=state.name)
@@ -141,33 +187,12 @@ class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable):
     
 
     def getFullNameFromRoot(self):
-        return ''.join([(f'/{a.name}' if isinstance(a,RankPairTreePathNode) else a.name) for a in self.ancestry()])
+        return ''.join([(f'{a.urlSegment}') for a in self.ancestry()])
 
     fullNameFromRoot:str = property(getFullNameFromRoot)
-
-    # def sortChildren(self, sortPathsAlphabetically:bool=False):
-    #     '''Ensure the regex child is furthest right'''
-    #     if not self.children:
-    #         return
-    #     # for ind,cNode in enumerate(self.childrenAsRankPairNodes):
-    #     #     if cNode.data['isRegexNode'] == True:
-    #     self._children.sort(key=lambda c: c.data['isRegexNode'])
-
-
-    # def traversePreorder(self):
-    #     result: list[RankPairTreeNode] = super().traversePreorder()
-    #     return result
-
-    # def traverseInorder(self):
-    #     result: list[RankPairTreeNode] = super().traverseInorder()
-    #     return result
-                
-    # def traversePostorder(self):
-    #     result: list[RankPairTreeNode] = super().traversePostorder()
-    #     return result
                 
 
-class RankPairTreeRootNode(TreeNodeRoot, RankPairTreeNodeSortable):
+class RankPairTreeRootNode(TreeNodeRoot, RankPairTreeNodeSortable, RankPairTreeUrlBuilder):
     def __init__(self, name='root'):
         # assert isinstance(data, RankPair) or data is None
         super().__init__(name=name)
@@ -184,22 +209,111 @@ class RankPairTreeRootNode(TreeNodeRoot, RankPairTreeNodeSortable):
             instance.appendChild(RankPairTreeNode.withChildrenState(child.children))
         return instance
 
+    def getFullNameFromRoot(self):
+        return self.name
 
-class RankPairTreeRegexNode(RankPairTreeNode):
-    def __init__(self, name='root'):
-        super().__init__(name=name)
-        self.data = {'isRegexNode': True}
+    fullNameFromRoot:str = property(getFullNameFromRoot)
 
-class RankPairTreePathNode(RankPairTreeNode):
+    def _getUrlSegment(self):
+        return f'{self.name}'
+    
+    urlSegment = property(_getUrlSegment)
+
+    def _getUrlSegmentType(self) -> UrlMatchEnum:
+        if any((c.nodeType == UrlMatchEnum.URL_DOMAIN for c in self.children)):
+            return UrlMatchEnum.URL_PROTOCOL
+        else:
+            return UrlMatchEnum.URL_DOMAIN
+
+    nodeType:UrlMatchEnum = property(_getUrlSegmentType)
+
+
+
+
+
+    
+
+class RankPairTreeTextNode(RankPairTreeNode):
     def __init__(self, sisterRegexNode:RankPairTreeRegexNode, name='root'):
         super().__init__(name=name)
         self.sisterRegexNode = sisterRegexNode
         self.data = {'isRegexNode': False}
 
     def filterPathNodesFromTreeNodes(nodes:list[RankPairTreeNode]):
-        result:list[RankPairTreePathNode] = [n for n in nodes if not n.data['isRegexNode']]
+        result:list[RankPairTreeTextNode] = [n for n in nodes if not n.data['isRegexNode']]
         return result
     
+class RankPairTreePathNode(RankPairTreeTextNode):
+    def _getUrlSegment(self):
+        return f'/{self.name}'
+    urlSegment = property(_getUrlSegment)
+
+class RankPairTreeQueryKeyNode(RankPairTreeTextNode):
+    # def __init__(self, sisterRegexNode: RankPairTreeRegexNode, name='root'):
+    #     super().__init__(sisterRegexNode, name=name)
+
+    
+    def _getUrlSegment(self):
+        arg = ''
+        if self.parent.nodeType == UrlMatchEnum.URL_PATH:
+            arg = '?'
+        elif self.parent.nodeType == UrlMatchEnum.URL_QUERY_VALUE:
+            arg = '&'
+        elif self.parent.nodeType == UrlMatchEnum.URL_DOMAIN:
+            arg = '?'
+        else:
+            arg = ''
+        return f'{arg}{self.name}'
+    
+    urlSegment = property(_getUrlSegment)
+    
+class RankPairTreeQueryValueNode(RankPairTreeTextNode):
+    
+    def _getUrlSegment(self):
+        return f'={self.name}'
+    
+    urlSegment = property(_getUrlSegment)
+
+class RankPairTreeDomainNode(RankPairTreeTextNode):
+
+    def _getUrlSegment(self):
+        return f'{self.name}'
+    
+    urlSegment = property(_getUrlSegment)
+
+class RankPairTreeQueryFlagNode(RankPairTreeTextNode):
+
+    def _getUrlSegment(self):
+        return '?'
+    
+    urlSegment:Literal['?'] = property(_getUrlSegment)
+
+
+class RankPairTreeRegexNode(RankPairTreeNode):
+    def __init__(self, name='root'):
+        super().__init__(name=name)
+        self.data = {'isRegexNode': True}
+
+    def _getUrlSegment(self):
+        otherChild = self.getSiblingsOfPathType()[0]
+        if otherChild.nodeType == UrlMatchEnum.URL_PATH:
+            arg = '/'
+        elif otherChild.nodeType == UrlMatchEnum.URL_QUERY_KEY:
+            if otherChild.parent.nodeType == UrlMatchEnum.URL_PATH:
+                arg = '?'
+            elif otherChild.parent.nodeType == UrlMatchEnum.URL_QUERY_VALUE:
+                arg = '&'
+            elif otherChild.parent.nodeType == UrlMatchEnum.URL_DOMAIN:
+                arg = '?'
+            else:
+                arg = ''
+        elif otherChild.nodeType == UrlMatchEnum.URL_QUERY_VALUE:
+            arg = '='
+        else:
+            arg = ''
+        return f'{arg}<regex>{self.name}</regex>'
+    
+    urlSegment = property(_getUrlSegment)
 
 
 class RankPairTree(object):
@@ -269,16 +383,29 @@ class RankPairTree(object):
         
         nodeToAddTo = instance.getDomainNode()
 
-        def _f(p:str,regx:str, nodesToAddTo:list[RankPairTreeNode]) -> Tuple[list[RankPairTreeNode],bool]:
+        def _f(p:str,regx:str, nodesToAddTo:list[RankPairTreeNode], urlMatchEnum:UrlMatchEnum) -> Tuple[list[RankPairTreeNode],str]:
             '''We are only adding text and regex nodes on all leaves when it is a new domain tree.\n
             Otherwise we only add paths and potentially regex when the tree does NOT already contain them.'''
+            
+            if urlMatchEnum == UrlMatchEnum.URL_DOMAIN:
+                T = RankPairTreeDomainNode
+            elif urlMatchEnum == UrlMatchEnum.URL_PATH:
+                T = RankPairTreePathNode
+            elif urlMatchEnum == UrlMatchEnum.URL_QUERY_KEY:
+                T = RankPairTreeQueryKeyNode
+            elif urlMatchEnum == UrlMatchEnum.URL_QUERY_VALUE:
+                T = RankPairTreeQueryValueNode
+            elif urlMatchEnum == UrlMatchEnum.URL_PARSING_SYMBOL:
+                T = RankPairTreeQueryFlagNode
+            else:
+                T = RankPairTreeTextNode
             
             
             # Case 1
             # get child nodes if domain has already been embedded with other url(s)
             childNodesToAddTo = [childNode for nodeToAddTo in nodesToAddTo for childNode in nodeToAddTo.childrenAsRankPairNodes]
-            pathNodes = RankPairTreePathNode.filterPathNodesFromTreeNodes(childNodesToAddTo)
-            matchingPathLeaves = [x for n in pathNodes if n.name == p for x in [n,n.sisterRegexNode]]
+            pathNodes = T.filterPathNodesFromTreeNodes(childNodesToAddTo)
+            matchingPathLeaves = [x for n in pathNodes if n.name == p for x in (n,n.sisterRegexNode)]
             if matchingPathLeaves:
                 existingNodesContainingUrlPath = matchingPathLeaves
                 return (existingNodesContainingUrlPath, matchingPathLeaves[0].fullNameFromRoot)
@@ -291,19 +418,21 @@ class RankPairTree(object):
                 newNodes:list[RankPairTreeNode] = []
                 for rgxNode in reNodes:
                     # add new path node to rgxLeaf.parent
-                    pathnode = RankPairTreePathNode(sisterRegexNode=rgxNode, name=p) #link the path node to regexLeaf
+                    pathnode = T(sisterRegexNode=rgxNode, name=p) #link the path node to regexLeaf
                     rgxNode.parent.appendChild(pathnode) 
                     # rgxNode.dataAsRankPair.incrementPathFreq()
                     newNodes.append(pathnode)
                     newNodes.append(rgxNode)
-                return (newNodes, reNodes[0].parent.fullNameFromRoot + '/'+ p)
+                otherPathNode:RankPairTreeTextNode = next((p for p in reNodes[0].parent.children if p != pathnode and p.data['isRegexNode'] != True))
+                return (newNodes, otherPathNode.fullNameFromRoot)
+                # return (newNodes, nullPipe(reNodes[0].parentWithParents, lambda x: x.fullNameFromRoot, reNodes[0].parent.name) + '/'+ p)
             
             # Case 3
             newNodes:list[RankPairTreeNode] = []
             for nodeToAddTo in nodesToAddTo:
                 parentNode = nodeToAddTo
                 pathRegexNode = RankPairTreeRegexNode(name=(RankPairTree._getSubRePattern(p) or regx))
-                pathTextNode = RankPairTreePathNode(sisterRegexNode=pathRegexNode, name=p)
+                pathTextNode = T(sisterRegexNode=pathRegexNode, name=p)
                 (parentNode
                 .appendChild(pathTextNode)
                 .appendChild(pathRegexNode))
@@ -311,20 +440,20 @@ class RankPairTree(object):
             return (newNodes, None)
 
         nodesToAddTo = [nodeToAddTo]
-        pathMatchedGeneralisation = True
+        alreadyExistingPathSoFar = nodeToAddTo.fullNameFromRoot
         generalisationOfUrl:str=None
         for trgx in instance._urlParser.parsedUrl.paths:
             p,regx = (trgx.text, trgx.regexPatrn)
-            nodesToAddTo, pathMatchedGeneralisation = _f(p, regx, nodesToAddTo)
-        containsGeneralisationOfUrl = pathMatchedGeneralisation
+            nodesToAddTo, alreadyExistingPathSoFar = _f(p, regx, nodesToAddTo, UrlMatchEnum.URL_PATH)
+        
             
 
         for (qk_trgx, qv_trgx) in instance._urlParser.parsedUrl.queries:
             (qk, qkRgx),(qv, qvRgx) = (qk_trgx.text, qk_trgx.regexPatrn), (qv_trgx.text, qv_trgx.regexPatrn)
             #TODO: Specify in _f that these are Query nodes, not PathNodes or Domain Nodes so that we can print the full url appropriately
-            nodesToAddTo,pathQueryMatchedGeneralisation = _f(qk, qkRgx, nodesToAddTo)
+            nodesToAddTo,alreadyExistingPathSoFar = _f(qk, qkRgx, nodesToAddTo, UrlMatchEnum.URL_QUERY_KEY)
             if qv:
-                nodesToAddTo,pathQueryMatchedGeneralisation = _f(qv, qvRgx, nodesToAddTo)
+                nodesToAddTo,alreadyExistingPathSoFar = _f(qv, qvRgx, nodesToAddTo, UrlMatchEnum.URL_QUERY_VALUE)
 
         if not instance.initialised:
             instance.initialised = True
@@ -332,7 +461,7 @@ class RankPairTree(object):
         if embed:
             assert self.__hash__() == instance.__hash__()
         
-        return (instance, generalisationOfUrl)
+        return (instance, alreadyExistingPathSoFar)
 
     def sortTree(self, sortPathsAlphabetically:bool=False):
         allNodes = self._treeState.traversePreorder()
