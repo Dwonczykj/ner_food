@@ -21,6 +21,8 @@ class UrlMatchEnum(IntEnum):
     URL_QUERY_VALUE = 4
     URL_PROTOCOL = 5
     URL_PARSING_SYMBOL = 6
+    UNDEFINED = 7
+    MULTI_URL_CONTAINER=8
 
 class EncodeUrlRankTreeResult():
     def __init__(self, rankTree, url:str, regexPattern:str) -> None:

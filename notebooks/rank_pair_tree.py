@@ -8,7 +8,7 @@ from typing import Literal, Tuple, overload
 import requests
 import numpy as np
 import matplotlib.pyplot as plt
-from collections import defaultdict
+from collections import UserList, defaultdict
 from collections.abc import Sequence
 from uint import Uint, Int
 from enum import Enum, IntEnum
@@ -25,7 +25,10 @@ from tree_node import TreeNode, TreeNodeRoot, TreeRootNodeBase
 from url_parser import ParsedUrlParser
 
 
-
+class RankTreeBuilderFlags(Enum):
+    AllowMultipleDomains = 2^0
+    AllowMultipleRegexLeavesPerParent = 2^1
+    
 
 class RankPair():
     def __init__(self, pathFrequencyCounter: Uint, numberRegexNodes: Uint, isRegexNode: bool) -> None:
@@ -185,6 +188,9 @@ class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable, RankPairTreeUrlBuilde
             ancestry = [ancestor] + ancestry
         return ancestry
     
+    def isRegexInAncestry(self) -> bool:
+        return any(c.data['isRegexNode'] == True for c in self.ancestry())
+    
 
     def getFullNameFromRoot(self):
         return ''.join([(f'{a.urlSegment}') for a in self.ancestry()])
@@ -215,13 +221,15 @@ class RankPairTreeRootNode(TreeNodeRoot, RankPairTreeNodeSortable, RankPairTreeU
     fullNameFromRoot:str = property(getFullNameFromRoot)
 
     def _getUrlSegment(self):
+        if self.nodeType == UrlMatchEnum.MULTI_URL_CONTAINER:
+            return ''
         return f'{self.name}'
     
     urlSegment = property(_getUrlSegment)
 
     def _getUrlSegmentType(self) -> UrlMatchEnum:
         if any((c.nodeType == UrlMatchEnum.URL_DOMAIN for c in self.children)):
-            return UrlMatchEnum.URL_PROTOCOL
+            return (UrlMatchEnum.MULTI_URL_CONTAINER if self.name == RankPairTree.TREE_ROOT_MULTI_DOMAIN_NAME else UrlMatchEnum.UNDEFINED)
         else:
             return UrlMatchEnum.URL_DOMAIN
 
@@ -323,6 +331,9 @@ class RankPairTree(object):
         self._urlParser:ParsedUrlParser = None
         self._treeState:RankPairTreeRootNode = None
         self.initialised:bool = False
+        self.rankTreeBuilderFlags = [
+            RankTreeBuilderFlags.AllowMultipleDomains
+        ]
         if url is not None:
             self.embedUrl(url)
             self.initialised = True
@@ -341,15 +352,18 @@ class RankPairTree(object):
         return self._processUrl(url, embed=True)[0]
 
     def containsGeneralisationOf(self, url:str):
-        return bool(self._processUrl(url, embed=False)[1]) if self.initialised else False
+        return bool(self._processUrl(url, embed=False, filterRegexNodesFromMatches=False)[1]) if self.initialised else False
 
-    def getExampleGeneralisationOf(self, url:str):
-        return (self._processUrl(url, embed=False)[1]) if self.initialised else None
+    def getExampleGeneralisationOf(self, url:str, removeRegexNodes:bool=True):
+        return self.getAllExampleGeneralisationsOf(url=url, removeRegexNodes=removeRegexNodes)[0]
+    
+    def getAllExampleGeneralisationsOf(self, url:str, removeRegexNodes:bool=True) -> list[str|None]:
+        return (self._processUrl(url, embed=False, filterRegexNodesFromMatches=removeRegexNodes)[1]) if self.initialised else [None]
 
-    def _processUrl(self, url:str, embed:bool) -> Tuple[RankPairTree,str]:
+    def _processUrl(self, url:str, embed:bool, filterRegexNodesFromMatches:bool=True) -> Tuple[RankPairTree,list[str]]:
         '''If embed, bake url into self and return self, else bake url into a copy of self and return the copy.'''
         instance:RankPairTree=None
-        containsGeneralisationOfUrl:bool = False
+        
         if embed:
             # _treeState:RankPairTreeRootNode = self._treeState
             instance = self
@@ -382,7 +396,7 @@ class RankPairTree(object):
         
         nodeToAddTo = instance.getDomainNode()
 
-        def _f(p:str,regx:str, nodesToAddTo:list[RankPairTreeNode], urlMatchEnum:UrlMatchEnum) -> Tuple[list[RankPairTreeNode],str]:
+        def _f(p:str,regx:str, nodesToAddTo:list[RankPairTreeNode], urlMatchEnum:UrlMatchEnum):
             '''We are only adding text and regex nodes on all leaves when it is a new domain tree.\n
             Otherwise we only add paths and potentially regex when the tree does NOT already contain them.'''
             
@@ -401,7 +415,7 @@ class RankPairTree(object):
 
 
             # todo change it to do nodes in nodesToAddto individually:
-            matches:list[Tuple[RankPairTreeNode,str]]
+            matches:list[Tuple[RankPairTreeNode,str]] = []
             for nodeToAddTo in nodesToAddTo:
                 if not nodeToAddTo.children:
                     # Add new text node and new regex node:
@@ -435,48 +449,35 @@ class RankPairTree(object):
                         matches.append((pathnode, None))
                         matches.append((regexNode, regexNode.fullNameFromRoot))
                     continue
-            
+                
+                if nodeToAddTo.children and not regexMatches:
+                    if RankTreeBuilderFlags.AllowMultipleRegexLeavesPerParent in self.rankTreeBuilderFlags:
+                        # Add new text node and new regex node:
+                        pathRegexNode = RankPairTreeRegexNode(name=(RankPairTree._getSubRePattern(p) or regx))
+                        pathTextNode = T(sisterRegexNode=pathRegexNode, name=p)
+                        nodeToAddTo.sortChildren()
+                        textNodeAtPos = next(i for i,node in enumerate(nodeToAddTo.children) if node.data['isRegexNode'] == True)
+                        (nodeToAddTo
+                        .appendChild(pathTextNode, atPosition=textNodeAtPos)
+                        .appendChild(pathRegexNode, atPosition=textNodeAtPos+1))
+                        matches += [
+                            (pathTextNode,None), 
+                            (pathRegexNode,None)
+                        ]
+                        continue
+                    else:
+                        # Find a more generic regex pattern for the regex child of nodeToAddTo and replace it.
+                        currentRegexNode:RankPairTreeRegexNode = next((rgxNode for rgxNode in nodeToAddTo.children if rgxNode.data['isRegexNode'] == True))
+                        pathRegexNode = RankPairTreeRegexNode(
+                            name=(
+                                regx if all(
+                                    (re.match(regx, c.name) 
+                                     for c in [*nodeToAddTo.children, RankPairTreePathNode(currentRegexNode,name=p)]
+                                     )) else RankPairTree._getSubRePattern(*[n.name for n in nodeToAddTo.children if n.data['isRegexNode'] == False])
+                                )
+                            )
             return matches
 
-
-            
-            # # Case 1
-            # #   - Get matching text nodes in the children of the nodes to add to:
-            # allChildNodesOfActiveSubTrees = [childNode for nodeToAddTo in nodesToAddTo for childNode in nodeToAddTo.childrenAsRankPairNodes]
-            # allPathChildNodesOfActiveSubTrees = T.filterPathNodesFromTreeNodes(allChildNodesOfActiveSubTrees)
-            # matchingPathLeaves = [x for n in allPathChildNodesOfActiveSubTrees if n.name == p for x in (n,n.sisterRegexNode)]
-            # if matchingPathLeaves:
-            #     existingNodesContainingUrlPath = matchingPathLeaves
-            #     return (existingNodesContainingUrlPath, matchingPathLeaves[0].fullNameFromRoot)
-            
-            # # Case 2
-            # #   - Get matching regex nodes:
-            # childNodesToAddTo = [childNode for nodeToAddTo in nodesToAddTo for childNode in nodeToAddTo.childrenAsRankPairNodes]
-            # reNodes:list[RankPairTreeRegexNode] = [lrg for lrg in childNodesToAddTo if lrg.data['isRegexNode'] and re.match(lrg.name, p)]
-            # if reNodes:
-            #     newNodes:list[RankPairTreeNode] = []
-            #     for rgxNode in reNodes:
-            #         # add new path node to rgxLeaf.parent
-            #         pathnode = T(sisterRegexNode=rgxNode, name=p) #link the path node to regexLeaf
-            #         rgxNode.parent.appendChild(pathnode, atPosition=-1) 
-            #         # rgxNode.dataAsRankPair.incrementPathFreq()
-            #         newNodes.append(pathnode)
-            #         newNodes.append(rgxNode)
-            #     otherPathNode:RankPairTreeTextNode = next((p for p in reNodes[0].parent.children if p != pathnode and p.data['isRegexNode'] != True))
-            #     return (newNodes, otherPathNode.fullNameFromRoot)
-            #     # return (newNodes, nullPipe(reNodes[0].parentWithParents, lambda x: x.fullNameFromRoot, reNodes[0].parent.name) + '/'+ p)
-            
-            # # Case 3
-            # newNodes:list[RankPairTreeNode] = []
-            # for nodeToAddTo in nodesToAddTo:
-            #     parentNode = nodeToAddTo
-            #     pathRegexNode = RankPairTreeRegexNode(name=(RankPairTree._getSubRePattern(p) or regx))
-            #     pathTextNode = T(sisterRegexNode=pathRegexNode, name=p)
-            #     (parentNode
-            #     .appendChild(pathTextNode, atPosition=None)
-            #     .appendChild(pathRegexNode, atPosition=None))
-            #     newNodes += [pathTextNode, pathRegexNode]
-            # return (newNodes, None)
 
         nodesToAddTo = [nodeToAddTo]
         alreadyExistingPathSoFar = nodeToAddTo.fullNameFromRoot
@@ -484,7 +485,7 @@ class RankPairTree(object):
         for trgx in instance._urlParser.parsedUrl.paths:
             p,regx = (trgx.text, trgx.regexPatrn)
             matches = _f(p, regx, nodesToAddTo, UrlMatchEnum.URL_PATH)
-            nodesToAddTo, alreadyExistingPathSoFar = ([m[0] for m in matches], [m[1] for m in matches])
+            nodesToAddTo, alreadyExistingPathSoFar = ([m[0] for m in matches], [m[1] for m in matches if m[0].data['isRegexNode'] == (not filterRegexNodesFromMatches)])
         
             
 
@@ -492,10 +493,10 @@ class RankPairTree(object):
             (qk, qkRgx),(qv, qvRgx) = (qk_trgx.text, qk_trgx.regexPatrn), (qv_trgx.text, qv_trgx.regexPatrn)
             #TODO: Specify in _f that these are Query nodes, not PathNodes or Domain Nodes so that we can print the full url appropriately
             matches = _f(qk, qkRgx, nodesToAddTo, UrlMatchEnum.URL_QUERY_KEY)
-            nodesToAddTo, alreadyExistingPathSoFar = ([m[0] for m in matches], [m[1] for m in matches])
+            nodesToAddTo, alreadyExistingPathSoFar = ([m[0] for m in matches], [m[1] for m in matches if m[0].data['isRegexNode'] == (not filterRegexNodesFromMatches)])
             if qv:
                 matches = _f(qv, qvRgx, nodesToAddTo, UrlMatchEnum.URL_QUERY_VALUE)
-                nodesToAddTo, alreadyExistingPathSoFar = ([m[0] for m in matches], [m[1] for m in matches])
+                nodesToAddTo, alreadyExistingPathSoFar = ([m[0] for m in matches], [m[1] for m in matches if m[0].data['isRegexNode'] == (not filterRegexNodesFromMatches)])
 
         if not instance.initialised:
             instance.initialised = True
@@ -631,79 +632,40 @@ class RankPairTree(object):
 
     TREE_ROOT_MULTI_DOMAIN_NAME = 'MULTI_DOMAIN'
 
-    def _getSubRePattern(testStr:str) -> str:
+    def _getSubRePattern(*testStrings:str) -> str:
         '''
         decreasing order of specificity rules: ['[0-9]', '[A-Z]', '[A-Za-z]', '[0-9A-Za-z]', r'[0-9A-Za-z\-]', r'[^\/]', '', '', '', ]
         
         to match: ['forum', 'p', 'sid', '0193Q']
         '''
-        tryPatternsDecreasingSpecificity = [
-            '^[0-9]+$',
-            '^[A-Z]+$',
-            '^[A-Za-z]+$',
-            '^[0-9A-Za-z]+$',
-            r'^[0-9A-Za-z\-]+$',
-            r'^[^\/]+$',
-            r'^[^=]+$',
-        ]
+        
+        tryPatternsDecreasingSpecificity = {
+            '^[0-9]+$': False,
+            '^[A-Z]+$': False,
+            '^[A-Za-z]+$': False,
+            '^[0-9A-Za-z]+$': False,
+            r'^[0-9A-Za-z\-]+$': False,
+            r'^[^\/]+$': False,
+            r'^[^=]+$': False,
+        }
+        
+        if not testStrings:
+            return None
 
-        for pattern in tryPatternsDecreasingSpecificity:
-            if re.match(pattern, testStr):
+        for testStr in testStrings:
+            for pattern in tryPatternsDecreasingSpecificity.keys():
+                if re.match(pattern, testStr):
+                    tryPatternsDecreasingSpecificity[pattern] = True
+                
+        for pattern in tryPatternsDecreasingSpecificity.keys():
+            if tryPatternsDecreasingSpecificity[pattern] == True:
                 return pattern
         else:
             return None
     
 
-def test_rankTree_builds_correct_layers():
-    
-    _testUrl = 'https://acme.com/forum?sid=QZ932'
-    rankTree = RankPairTree(_testUrl)
-    pprint(rankTree)
-    print(rankTree.TreeRank)
-    assert rankTree.depth == 4, f'RankTree should have 4 layers for url: {_testUrl}, not {rankTree.depth}'
-    assert rankTree.data['pathFrequency'] == 1 and rankTree.data['regexNodesInTreeDescendency'] == 0 
-
-def test_rankTree_builds_correct_layers_complex():
-    
-    _testUrl = 'https://groceries.asda.com/product/natural-plain-organic/fage-total-fat-free-greek-recipe-natural-yogurt/24771357?sid=12534Q&style=green'
-    rankTree = RankPairTree(_testUrl)
-    pprint(rankTree)
-    print(rankTree.TreeRank)
-
-def test_rankTree_2_urls():
-    
-    _testUrl = 'https://acme.com/forum?sid=QZ932'
-    rankTree = RankPairTree(_testUrl)
-    assert rankTree._treeState.children[1].fullNameFromRoot.startswith('https://acme.com/')
-    _testUrl2 = 'https://acme.com/forum?sid=QZ933'
-    rankTree.embedUrl(_testUrl2)
-    treeRank = rankTree.TreeRank
-    assert treeRank['isRegexNode'] == True, 'treeRank[\'isRegexNode\'] should be True'
-    assert treeRank['pathFrequency'] == 2, 'treeRank[\'pathFrequency\'] should be 2'
-    assert treeRank['regexNodesInTreeDescendency'] == 1, 'treeRank[\'regexNodesInTreeDescendency\'] should be 1'
-    rankTree.sortTree()
-    pprint(rankTree)
-
-def test_rankTree_multi_urls():
-    urls = [
-        'https://groceries.asda.com/promotion/2-for-4/ls91619', 
-        'https://groceries.asda.com/cat/vegan-plant-based/617635960', 
-        'https://groceries.asda.com/product/910000879998', 
-        'https://groceries.asda.com/product/1000005036703', 
-        'https://groceries.asda.com/accessibility', 
-        'https://groceries.asda.com/cat/fresh-food-bakery/103099', 
-        'https://groceries.asda.com/product/1000275697716', 
-        'https://groceries.asda.com/super_dept/food-cupboard/1215337189632', 
-        'https://groceries.asda.com/product/1000329097857', 
-        'https://groceries.asda.com/recipes/Crunchy-cheese-bites/384e188d-2aff-11e9-8802-7daf07a34f81'
-        ]
-    rankTree = RankPairTree(urls[0])
-    for url in urls[1:2]:
-        rankTree.embedUrl(url)
-        pprint(rankTree)
-        rankTree.sortTree()
 
 if __name__ == '__main__':
-    test_rankTree_multi_urls()
+    pass
     
     
