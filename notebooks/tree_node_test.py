@@ -1,6 +1,6 @@
 import pytest
 
-from tree_node import TreeNode
+from tree_node import TreeNode, TreeRootNodeBase
 
 # def test_tree_can_refresh_jagged_array():
 #     thirdChild = TreeNode(f'Leaf{3}')
@@ -29,38 +29,65 @@ def test_can_add_child_to_tree():
     assert len(tree.children) == 1, 'TestTree appendChild failed to add one child'
     assert isinstance(tree.children[0], TreeNode), 'TestTree appendChild doesnt add child of type TreeNode'
     assert tree.children[0].name == 'FirstLeaf', 'TestTree appendChild, child incorrectly named'
+    pass
 
-def _test_generate_child_node(level:int, childNo: int):
+def _generate_child_node(level:int, childNo: int):
     return TreeNode(name=f'TreeNode_Layer_{level}_child{childNo}')
 
-def test_can_get_tree_leaves():
+def _build_complex_tree():
     tree = TreeNode(name='RootTreeNode')
-    numChildren = 2
-    layer1 = [_test_generate_child_node(1, i+1) for i in range(numChildren)]
+    layer1 = [_generate_child_node(1, i+1) for i in range(2)]
     for i,n in enumerate(layer1):
         tree.appendChild(n)
-        layer2n = [_test_generate_child_node(2,(i*numChildren)+j+1) for j in range(numChildren)]
-        for j,nn in enumerate(layer2n):
+        numChildren = 2
+        layer2n = [_generate_child_node(2,(i*numChildren)+j+1) for j in range(numChildren)]
+        for j,nn in enumerate (layer2n):
             n.appendChild(nn)
+    return tree
+
+def test_can_get_tree_leaves():
+    tree = _build_complex_tree()
     leaves = tree.getLeaves()
     for n in leaves:
         # assert(f'TreeNode_Layer_2_child' in n.name, 'Tree.getLeaves returns nodes that arent leaves')
         assert(not(n.children), 'getLeaves() returns nodes with children')
     assert(len(leaves)==4, 'getLeaves() return incorrect number of leaves in the tree')
+    pass
 
 def test_tree_can_count_its_layers():
-    tree = TreeNode(name='RootTreeNode')
-    layer1 = [_test_generate_child_node(1, i+1) for i in range(2)]
-    for i,n in enumerate(layer1):
-        tree.appendChild(n)
-        numChildren = 2
-        layer2n = [_test_generate_child_node(2,(i*numChildren)+j+1) for j in range(numChildren)]
-        for j,nn in enumerate (layer2n):
-            n.appendChild(nn)
+    tree = _build_complex_tree()
     assert(tree.numberOfLayers == 3, 'Tree cannot correctly count its layers, should be 3.')
-    
+    pass
 
 
 def test_can_initialise_tree():
     tree = TreeNode(name='TestTree')
     assert tree.name == 'TestTree', 'Tree node initialisation failed.'
+    pass
+    
+def test_can_create_deep_copy():
+    tree = _build_complex_tree()
+    copyTree = tree.copyDeep()
+    def _checkNodesEqual(node1:TreeRootNodeBase, node2:TreeRootNodeBase):
+        assert node1.name == node2.name
+        assert node1.data == node2.data
+        assert len(node1.children) == len(node2.children)
+        for i, childTuple in enumerate(zip(node1.children, node2.children)):
+            _checkNodesEqual(childTuple[0], childTuple[1])
+    
+    _checkNodesEqual(tree, copyTree)
+    pass
+        
+    
+def test_deep_copy_is_new_instance():
+    tree:TreeRootNodeBase = _build_complex_tree()
+    copyTree:TreeRootNodeBase = tree.copyDeep()
+    assert tree != copyTree
+    def _checkNodesAreCopies(node1:TreeRootNodeBase, node2:TreeRootNodeBase):
+        assert node1 != node2
+        for i, childTuple in enumerate(zip(node1.children, node2.children)):
+            _checkNodesAreCopies(childTuple[0], childTuple[1])
+    
+    _checkNodesAreCopies(tree, copyTree)
+    pass
+    

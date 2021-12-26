@@ -18,7 +18,7 @@ from pprint import pprint
 from tree_node import ITreeNode
 import abc
 from url_parser import UrlMatchEnum
-from py_utils import nullPipe
+from py_utils import predicatePipe
 
 
 from tree_node import TreeNode, TreeNodeRoot, TreeRootNodeBase
@@ -188,8 +188,8 @@ class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable, RankPairTreeUrlBuilde
             ancestry = [ancestor] + ancestry
         return ancestry
     
-    def isRegexInAncestry(self) -> bool:
-        return any(c.data['isRegexNode'] == True for c in self.ancestry())
+    def isRegexInAncestry(self, ignoreSelf:bool=False) -> bool:
+        return any(c.data['isRegexNode'] == True for c in self.ancestry()[:(-1 if ignoreSelf else None)])
     
 
     def getFullNameFromRoot(self):
@@ -340,7 +340,7 @@ class RankPairTree(object):
         
     def fromState(treeState:RankPairTreeRootNode) -> RankPairTree:
         instance = RankPairTree()
-        instance._treeState = treeState
+        instance._treeState = treeState.copyDeep()
         instance.initialised = (treeState.name is not None)
         return instance
 
@@ -355,10 +355,10 @@ class RankPairTree(object):
         return bool(self._processUrl(url, embed=False, filterRegexNodesFromMatches=False)[1]) if self.initialised else False
 
     def getExampleGeneralisationOf(self, url:str, removeRegexNodes:bool=True):
-        return self.getAllExampleGeneralisationsOf(url=url, removeRegexNodes=removeRegexNodes)[0]
+        return predicatePipe(self.getAllExampleGeneralisationsOf(url=url, removeRegexNodes=removeRegexNodes), lambda o: bool(o), lambda x: x[0])
     
     def getAllExampleGeneralisationsOf(self, url:str, removeRegexNodes:bool=True) -> list[str|None]:
-        return (self._processUrl(url, embed=False, filterRegexNodesFromMatches=removeRegexNodes)[1]) if self.initialised else [None]
+        return ([s for s in self._processUrl(url, embed=False, filterRegexNodesFromMatches=removeRegexNodes)[1] if s is not None]) if self.initialised else [None]
 
     def _processUrl(self, url:str, embed:bool, filterRegexNodesFromMatches:bool=True) -> Tuple[RankPairTree,list[str]]:
         '''If embed, bake url into self and return self, else bake url into a copy of self and return the copy.'''
@@ -374,6 +374,7 @@ class RankPairTree(object):
                 instance = self.copyDeep()
             else:
                 instance = RankPairTree(url)
+            assert self != instance
         
         _urlParser = ParsedUrlParser(url)
         _urlParser.parseUrl()
@@ -482,22 +483,39 @@ class RankPairTree(object):
         nodesToAddTo = [nodeToAddTo]
         alreadyExistingPathSoFar = nodeToAddTo.fullNameFromRoot
         generalisationOfUrl:str=None
-        for trgx in instance._urlParser.parsedUrl.paths:
+        for ind,trgx in enumerate(instance._urlParser.parsedUrl.paths):
             p,regx = (trgx.text, trgx.regexPatrn)
             matches = _f(p, regx, nodesToAddTo, UrlMatchEnum.URL_PATH)
-            nodesToAddTo, alreadyExistingPathSoFar = ([m[0] for m in matches], [m[1] for m in matches if m[0].data['isRegexNode'] == (not filterRegexNodesFromMatches)])
-        
+            nodesToAddTo, alreadyExistingPathSoFar = (
+                [m[0] for m in matches], 
+                [
+                    (m[0].getSiblingsOfPathType()[0].fullNameFromRoot if m[0].data['isRegexNode'] == True and m[1] is not None else m[1]) 
+                    for m in matches if m[0].isRegexInAncestry(ignoreSelf=True) == (not filterRegexNodesFromMatches)
+                ]
+            )
+            
             
 
-        for (qk_trgx, qv_trgx) in instance._urlParser.parsedUrl.queries:
+        for ind,(qk_trgx, qv_trgx) in enumerate(instance._urlParser.parsedUrl.queries):
             (qk, qkRgx),(qv, qvRgx) = (qk_trgx.text, qk_trgx.regexPatrn), (qv_trgx.text, qv_trgx.regexPatrn)
-            #TODO: Specify in _f that these are Query nodes, not PathNodes or Domain Nodes so that we can print the full url appropriately
             matches = _f(qk, qkRgx, nodesToAddTo, UrlMatchEnum.URL_QUERY_KEY)
-            nodesToAddTo, alreadyExistingPathSoFar = ([m[0] for m in matches], [m[1] for m in matches if m[0].data['isRegexNode'] == (not filterRegexNodesFromMatches)])
+            nodesToAddTo, alreadyExistingPathSoFar = (
+                [m[0] for m in matches], 
+                [
+                    (m[0].getSiblingsOfPathType()[0].fullNameFromRoot if m[0].data['isRegexNode'] == True and m[1] is not None else m[1]) 
+                    for m in matches if m[0].isRegexInAncestry(ignoreSelf=True) == (not filterRegexNodesFromMatches)
+                ]
+            )
             if qv:
                 matches = _f(qv, qvRgx, nodesToAddTo, UrlMatchEnum.URL_QUERY_VALUE)
-                nodesToAddTo, alreadyExistingPathSoFar = ([m[0] for m in matches], [m[1] for m in matches if m[0].data['isRegexNode'] == (not filterRegexNodesFromMatches)])
-
+                nodesToAddTo, alreadyExistingPathSoFar = (
+                    [m[0] for m in matches], 
+                    [
+                        (m[0].getSiblingsOfPathType()[0].fullNameFromRoot if m[0].data['isRegexNode'] == True and m[1] is not None else m[1]) 
+                        for m in matches if m[0].isRegexInAncestry(ignoreSelf=True) == (not filterRegexNodesFromMatches)
+                    ]
+                )
+                
         if not instance.initialised:
             instance.initialised = True
 

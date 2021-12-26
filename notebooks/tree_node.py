@@ -1,10 +1,11 @@
 from __future__ import annotations
+import inspect
 from operator import add
 from os import path, setpgid
 import io
 import os
 import re
-from typing import Optional
+from typing import Generic, Optional, TypeVar
 import requests
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,6 +17,7 @@ import debugpy as debug
 import warnings
 from pprint import pprint
 import abc
+
 
 # @abc.ABC
 class ITreeNode(abc.ABC):
@@ -392,7 +394,7 @@ class TreeRootNode(ITreeChildNode):
         return False
 
 
-
+T = TypeVar('T',bound=TreeRootNode)
 
 class TreeRootNodeBase(TreeRootNode, TreePrintable, TreeTraversable):
     "Generic tree node."
@@ -415,6 +417,20 @@ class TreeRootNodeBase(TreeRootNode, TreePrintable, TreeTraversable):
 
     def __hash__(self) -> int:
         return hash(str(self))
+    
+    def copyDeep(self:T) -> T:
+        kwargs = {}
+        for constructor_arg_name in list(inspect.signature(type(self).__init__).parameters)[1:]:
+            if hasattr(self, constructor_arg_name):
+                kwargs[constructor_arg_name] = getattr(self, constructor_arg_name)
+        
+        instance = type(self)(**kwargs)
+        instance.data = self.data
+        
+        for child in self.children:
+            instance.appendChild(child.copyDeep())
+        
+        return instance
     
     def getNumberLayers(self):
         return self.getDepth()

@@ -55,14 +55,21 @@ class DummyFileAppender(IFileAppender):
 
 class FileAppender(IFileAppender):
     def __init__(self, logname:str) -> None:
-        self._fileName = f'../data/url_pioneer_{logname}.txt'
+        parent_dir = os.getcwd()
+        if os.path.basename(parent_dir) == 'notebooks':
+            parent_dir = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
+        
+        self._fileName = os.path.join(parent_dir, f'data/url_pioneer_{logname}.txt')
+        if not os.path.exists(self._fileName):
+            with open(self._fileName, 'w') as f:
+                pass
         self._file:io.TextIOWrapper = None
         atexit.register(self.closeStream)
     
     def openStream(self):
         self._file = open(self._fileName, 'a+')
         timestamp = datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
-        self._file.write(f'FileOpenEvent: ({timestamp})')
+        self._file.write(f'FileOpenEvent: ({timestamp})\n')
         return self
     
     def write(self, string:str):
@@ -73,7 +80,7 @@ class FileAppender(IFileAppender):
         if self._file is not None:
             try:
                 timestamp = datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
-                self._file.write(f'FileCloseEvent: ({timestamp})')
+                self._file.write(f'FileCloseEvent: ({timestamp})\n')
             except Exception as e:
                 logging.error(e)
             self._file.close()
@@ -84,5 +91,7 @@ class FileAppender(IFileAppender):
 
     def __exit__(self, exc_type, exc_value, traceback):
         if self._file:
-            self._file.close()
-            os.unlink(self._file)
+            self.closeStream()
+            
+            # Line below to delete the file:
+            # os.unlink(self._file)

@@ -27,75 +27,25 @@ from bs4 import BeautifulSoup, SoupStrainer, Tag, NavigableString, ResultSet
 from selenium.webdriver import Safari
 from selenium.webdriver.common.by import By
 
+class CanUseBs4(Enum):
+    No = -1
+    Unknown = 0
+    Yes = 1
 
 
+class UrlProps():
+    def __init__(self, anchorTagHrefs:list[str]=[], embeddedScriptAndAnchorTagHrefs:list[str]=[]) -> None:
+        self.canUseBs4:CanUseBs4 = CanUseBs4.Unknown
+        self.anchorTagHrefs = anchorTagHrefs
+        self.embeddedScriptAndAnchorTagHrefs = embeddedScriptAndAnchorTagHrefs
 
-
-# driver.find_element(By.XPATH, '//button[text()="Some text"]')
-# ID = "id"
-# XPATH = "xpath"
-# LINK_TEXT = "link text"
-# PARTIAL_LINK_TEXT = "partial link text"
-# NAME = "name"
-# TAG_NAME = "tag name"
-# CLASS_NAME = "class name"
-# CSS_SELECTOR = "css selector"
-
-# https://pythex.org/?regex=%5E(%3F%3A(%3FP%3Cprotocol%3Ehttp%5Bs%5D%3F%7Cftp)%3A%5C%2F)%3F%5C%2F%3F(%3FP%3Cdomain%3E%5B%5E%3A%5C%2F%5Cs%5D%2B)(%3F%3A(%3FP%3Cpath%3E(%3F%3A(%3F%3A%5C%2F%5Cw%2B)*)(%3F%3A%5C%2F%5B%5Cw%5C-%5C.%5D%2B%5B%5E%23%3F%5Cs%5D%2B))(%3FP%3Cquery%3E.*)(%3FP%3Cid%3E%23%5B%5Cw%5C-%5D%2B)%3F)%3F%24&test_string=https%3A%2F%2Fassets.adobedtm.com&ignorecase=0&multiline=0&dotall=0&verbose=0
-URL_RE_PATTERN = r'^(?:(?P<protocol>http[s]?|ftp):\/)?\/?(?P<domain>[^:\/\s]+)(?:(?P<path>(?:(?:\/\w+)*)(?:\/[\w\-\.]+[^#?\s]+))(?P<query>.*)(?P<id>#[\w\-]+)?)?$'
-
-def _urlDiscoverySelenium(rootUrl:str, driver:Safari):
-    driver.get(rootUrl)
-    find_and_agree_cookies(driver)
-    anchorTagUrls = [we.get_attribute('href') for we in driver.find_elements(By.TAG_NAME, 'a')]
-    scriptTagUrlEmbeds = [nullPipe(re.match(URL_RE_PATTERN, str(we.text)),lambda x: x.string) for we in driver.find_elements(By.TAG_NAME, 'script')] 
-    onClickAttributeUrlEmbeds = [nullPipe(re.match(URL_RE_PATTERN, we.get_attribute('onClick')), lambda x: x.string) for we in driver.find_elements(By.CSS_SELECTOR, '[onClick]') if we.get_attribute('onClick')] 
-    # Button urls should be included in the onClick handler above.
-    # buttonTagUrls = [we for we in driver.find_elements(By.TAG_NAME, 'button')]
-
-    # urlPioneer = anchorTagUrls + scriptTagUrlEmbeds + onClickAttributeUrlEmbeds
-    urlProps = UrlProps(anchorTagUrls, scriptTagUrlEmbeds + onClickAttributeUrlEmbeds)
-    return urlProps
-    return urlPioneer
-
-def _urlDiscoveryBs4(rootUrl:str):
+    def getNumAnchorTags(self):
+        return len(self.anchorTagHrefs)
+    def getNumHrefsInScriptsAndButtons(self):
+        return len(self.embeddedScriptAndAnchorTagHrefs)
+    numAnchorTags = property(getNumAnchorTags)
+    numHrefsInScriptsAndButtons = property(getNumHrefsInScriptsAndButtons)
     
-    # http://www.xhaus.com/headers -> View your headers in browser
-    headers = {"User-agent": 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.55 Safari/537.36 Edg/96.0.1054.43'}
-    if rootUrl.startswith('file:///'):
-        with open(re.sub(r'^file:\/\/\/', '/', rootUrl), 'r') as f:
-            pageContents = f.read()
-    else:
-        pageContents = requests.get(rootUrl, headers=headers).content
-    # print(page.content)
-    soup = BeautifulSoup(pageContents, 'html.parser')
-    
-    anchorTagUrls = [we.get('href') for we in soup.find_all('a')]
-    scriptTagUrlEmbeds = [nullPipe(re.match(URL_RE_PATTERN, str(nullPipe(we.string, lambda y: y, returnIfnull=None))),lambda x: x.string) for we in soup.find_all('script')] 
-    onClickAttributeUrlEmbeds = [nullPipe(re.match(URL_RE_PATTERN, we.get('onClick')), lambda x: x.string) for we in soup.find_all(onClick=True) if we.get('onClick')] 
-    # Button urls should be included in the onClick handler above.
-    # buttonTagUrls = [we for we in driver.find_elements(By.TAG_NAME, 'button')]
-
-    # urlPioneer = anchorTagUrls + scriptTagUrlEmbeds + onClickAttributeUrlEmbeds
-    urlProps = UrlProps(anchorTagUrls, scriptTagUrlEmbeds + onClickAttributeUrlEmbeds)
-    return urlProps
-
-def urlDiscovery(rootUrl:str, driver:Safari=None, useSelenium:bool=False,requiredSubDomain:str=None):
-    driverType = 'selenium' if useSelenium else 'bs4'
-    logging.info(f'urlDiscovery[{driverType}]: {rootUrl}')
-    if useSelenium and driver is not None:
-        result = _urlDiscoverySelenium(rootUrl=rootUrl, driver=driver)
-    else:
-        result = _urlDiscoveryBs4(rootUrl)
-    
-    def _removeEmptyUrls(result:list[str]):
-        return [url for url in result if url is not None and (requiredSubDomain in url or requiredSubDomain is None)]
-    
-    return UrlProps(
-        anchorTagHrefs=_removeEmptyUrls(result.anchorTagHrefs),
-        embeddedScriptAndAnchorTagHrefs=_removeEmptyUrls(result.embeddedScriptAndAnchorTagHrefs)
-    )
-
 def nth_of_type(elem:Tag):
     count, curr = 0, 0
     for i, e in enumerate(elem.find_parent().find_all(recursive=False), 1):
@@ -173,127 +123,203 @@ def selenium_click_webEl(webEl, driver):
 
     return success
 
-def find_and_agree_cookies(driver:Safari):
-    _f = lambda btnText: f"//*[text()='{btnText}']"
-    agreebtns = driver.find_elements_by_xpath(_f('I agree'))
-    btn_ids= None
-    if agreebtns:
-        btn_ids = [agreebtn.get_attribute('id') for agreebtn in agreebtns]
-    if not btn_ids:
-        agreebtns = driver.find_elements_by_xpath(_f('Allow All'))
+
+
+
+# https://pythex.org/?regex=%5E(%3F%3A(%3FP%3Cprotocol%3Ehttp%5Bs%5D%3F%7Cftp)%3A%5C%2F)%3F%5C%2F%3F(%3FP%3Cdomain%3E%5B%5E%3A%5C%2F%5Cs%5D%2B)(%3F%3A(%3FP%3Cpath%3E(%3F%3A(%3F%3A%5C%2F%5Cw%2B)*)(%3F%3A%5C%2F%5B%5Cw%5C-%5C.%5D%2B%5B%5E%23%3F%5Cs%5D%2B))(%3FP%3Cquery%3E.*)(%3FP%3Cid%3E%23%5B%5Cw%5C-%5D%2B)%3F)%3F%24&test_string=https%3A%2F%2Fassets.adobedtm.com&ignorecase=0&multiline=0&dotall=0&verbose=0
+URL_RE_PATTERN = r'^(?:(?P<protocol>http[s]?|ftp):\/)?\/?(?P<domain>[^:\/\s]+)(?:(?P<path>(?:(?:\/\w+)*)(?:\/[\w\-\.]+[^#?\s]+))(?P<query>.*)(?P<id>#[\w\-]+)?)?$'
+
+
+class UrlDiscoEngine():
+
+    # driver.find_element(By.XPATH, '//button[text()="Some text"]')
+    # ID = "id"
+    # XPATH = "xpath"
+    # LINK_TEXT = "link text"
+    # PARTIAL_LINK_TEXT = "partial link text"
+    # NAME = "name"
+    # TAG_NAME = "tag name"
+    # CLASS_NAME = "class name"
+    # CSS_SELECTOR = "css selector"
+
+    
+    maxSpiderExplodeAllowed:Literal = 3
+    defaultSpiderExplodeDepth:Literal = 3
+    
+    def __init__(self, useSelenium:bool, maxSubUrls:int) -> None:
+        self.driver:Safari = None
+        self.useSelenium = useSelenium
+        self.maxSubUrls = maxSubUrls
+        self._BASE_WINDOW_HANDLE_LAZY = ''
+        if self.useSelenium:
+            self.driver = Safari()
+            self.driver.implicitly_wait(10)
+            self._BASE_WINDOW_HANDLE_LAZY = self.driver.current_window_handle
+            self._closeExtraSeleniumWebWindows()
+        
+
+    def _closeExtraSeleniumWebWindows(self):
+        if len(self.driver.window_handles) > 1 and self._BASE_WINDOW_HANDLE_LAZY in self.driver.window_handles:
+            for i,w in enumerate(self.driver.window_handles):
+                if w != self._BASE_WINDOW_HANDLE_LAZY:
+                    self.driver.switch_to_window(w)
+                    self.driver.close()
+            self.driver.switch_to_window(self._BASE_WINDOW_HANDLE_LAZY)
+        assert self._BASE_WINDOW_HANDLE_LAZY in self.driver.window_handles, 'BASE_WINDOW_HANDLE_LAZY not in driver.window_handles'
+        assert len(self.driver.window_handles) == 1, f'{type(self.driver)} should only have 1 window open.'
+        
+
+    def _urlDiscoverySelenium(self,rootUrl:str, driver:Safari):
+        driver.get(rootUrl)
+        self._closeExtraSeleniumWebWindows()
+                    
+        self.find_and_agree_cookies()
+        anchorTagUrls = [we.get_attribute('href') for we in driver.find_elements(By.TAG_NAME, 'a')]
+        scriptTagUrlEmbeds = [nullPipe(re.match(URL_RE_PATTERN, str(we.text)),lambda x: x.string) for we in driver.find_elements(By.TAG_NAME, 'script')] 
+        onClickAttributeUrlEmbeds = [nullPipe(re.match(URL_RE_PATTERN, we.get_attribute('onClick')), lambda x: x.string) for we in driver.find_elements(By.CSS_SELECTOR, '[onClick]') if we.get_attribute('onClick')] 
+        # Button urls should be included in the onClick handler above.
+        # buttonTagUrls = [we for we in driver.find_elements(By.TAG_NAME, 'button')]
+
+        # urlPioneer = anchorTagUrls + scriptTagUrlEmbeds + onClickAttributeUrlEmbeds
+        # return urlPioneer
+        urlProps = UrlProps(anchorTagUrls, scriptTagUrlEmbeds + onClickAttributeUrlEmbeds)
+        return urlProps
+
+    def _urlDiscoveryBs4(self,rootUrl:str):
+        
+        # http://www.xhaus.com/headers -> View your headers in browser
+        headers = {"User-agent": 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.55 Safari/537.36 Edg/96.0.1054.43'}
+        if rootUrl.startswith('file:///'):
+            with open(re.sub(r'^file:\/\/\/', '/', rootUrl), 'r') as f:
+                pageContents = f.read()
+        else:
+            pageContents = requests.get(rootUrl, headers=headers).content
+        # print(page.content)
+        soup = BeautifulSoup(pageContents, 'html.parser')
+        
+        anchorTagUrls = [we.get('href') for we in soup.find_all('a')]
+        scriptTagUrlEmbeds = [nullPipe(re.match(URL_RE_PATTERN, str(nullPipe(we.string, lambda y: y, returnIfnull=None))),lambda x: x.string) for we in soup.find_all('script')] 
+        onClickAttributeUrlEmbeds = [nullPipe(re.match(URL_RE_PATTERN, we.get('onClick')), lambda x: x.string) for we in soup.find_all(onClick=True) if we.get('onClick')] 
+        # Button urls should be included in the onClick handler above.
+        # buttonTagUrls = [we for we in driver.find_elements(By.TAG_NAME, 'button')]
+
+        # urlPioneer = anchorTagUrls + scriptTagUrlEmbeds + onClickAttributeUrlEmbeds
+        urlProps = UrlProps(anchorTagUrls, scriptTagUrlEmbeds + onClickAttributeUrlEmbeds)
+        return urlProps
+
+    def urlDiscovery(self,rootUrl:str, driver:Safari=None, useSelenium:bool=False,requiredSubDomain:str=None):
+        driverType = 'selenium' if useSelenium else 'bs4'
+        logging.info(f'urlDiscovery[{driverType}]: {rootUrl}')
+        if useSelenium and driver is not None:
+            result = self._urlDiscoverySelenium(rootUrl=rootUrl, driver=driver)
+        else:
+            result = self._urlDiscoveryBs4(rootUrl)
+        
+        def _removeEmptyUrls(result:list[str]):
+            return [url for url in result if url is not None and (requiredSubDomain in url or requiredSubDomain is None)]
+        
+        return UrlProps(
+            anchorTagHrefs=_removeEmptyUrls(result.anchorTagHrefs),
+            embeddedScriptAndAnchorTagHrefs=_removeEmptyUrls(result.embeddedScriptAndAnchorTagHrefs)
+        )
+
+    
+
+    def find_and_agree_cookies(self):
+        _f = lambda btnText: f"//*[text()='{btnText}']"
+        
+        agreebtns = self.driver.find_elements_by_xpath(_f('I agree'))
+        btn_ids= None
         if agreebtns:
             btn_ids = [agreebtn.get_attribute('id') for agreebtn in agreebtns]
-        else:
-            btn_ids = []
+        if not btn_ids:
+            agreebtns = self.driver.find_elements_by_xpath(_f('Allow All'))
+            if agreebtns:
+                btn_ids = [agreebtn.get_attribute('id') for agreebtn in agreebtns]
+            else:
+                btn_ids = []
 
-    if btn_ids:
-        for btn_id in btn_ids:
-            btn = driver.find_element_by_id(btn_id)
-            if btn.is_displayed():
-                if seleniumTryClickWebEl(btn):
-                    # driver.execute_script(f'$(\'#{btn_id}\').click()')
-                    driver.execute_script(f'document.getElementById(\'{btn_id}\').click()')
-
-
-class CanUseBs4(Enum):
-    No = -1
-    Unknown = 0
-    Yes = 1
+        if btn_ids:
+            for btn_id in btn_ids:
+                btn = self.driver.find_element_by_id(btn_id)
+                if btn.is_displayed():
+                    if seleniumTryClickWebEl(btn):
+                        # driver.execute_script(f'$(\'#{btn_id}\').click()')
+                        self.driver.execute_script(f'document.getElementById(\'{btn_id}\').click()')
 
 
-class UrlProps():
-    def __init__(self, anchorTagHrefs:list[str]=[], embeddedScriptAndAnchorTagHrefs:list[str]=[]) -> None:
-        self.canUseBs4:CanUseBs4 = CanUseBs4.Unknown
-        self.anchorTagHrefs = anchorTagHrefs
-        self.embeddedScriptAndAnchorTagHrefs = embeddedScriptAndAnchorTagHrefs
-
-    def getNumAnchorTags(self):
-        return len(self.anchorTagHrefs)
-    def getNumHrefsInScriptsAndButtons(self):
-        return len(self.embeddedScriptAndAnchorTagHrefs)
-    numAnchorTags = property(getNumAnchorTags)
-    numHrefsInScriptsAndButtons = property(getNumHrefsInScriptsAndButtons)
-
-
-
-maxSpiderExplodeAllowed:Literal = 3
-defaultSpiderExplodeDepth:Literal = 3
-
-def run_url_discovery_ASDA():
-    return _run_url_discovery('https://groceries.asda.com', 'asda.com', 3, 'ASDA')
     
 
-def _run_url_discovery(domain, subDomainReq, explodeTimes:Uint=defaultSpiderExplodeDepth, saveOut:str=None):
     
-    driver:Safari = None
-    if useSelenium:
-        driver = Safari()
-        driver.implicitly_wait(10)
-        
-    if maxSpiderExplodeAllowed < explodeTimes:
-        warnings.warn(f'Warning: Max allowed Spider Explode to depth of: {maxSpiderExplodeAllowed}')
-    fileToClose = False    
-    saveFileWrap:IFileAppender
-    if saveOut is not None:
-        fileToClose = True
-        saveFileWrap = FileAppender(saveOut).openStream()
-    else:
-        saveFileWrap = DummyFileAppender('Dummy').openStream()
-        
         
 
-    try:   
-        urlsToSearch = [domain]
-        newurls = []
-        urlPioneer = []
-        _i = 0
-        urlTree:RankPairTree = RankPairTree()
-        urlDict = {}
-        # TODO: Catch popup windows and then close them. By checking for windows wptjer than the active window.
-        while _i < max(1,min(defaultSpiderExplodeDepth,explodeTimes)):
-            _i += 1
-            newurls:list[str] = []
-            for url in urlsToSearch:
-                _useSeleniumForThisUrl = useSelenium
-                exampleUrl = urlTree.getExampleGeneralisationOf(url, removeRegexNodes=True)
-                if exampleUrl is not None:
-                    _useSeleniumForThisUrl = False
-                    expectedHtmlProps = urlDict[exampleUrl]
-                urlTree.embedUrl(url)
-                urlProps = urlDiscovery(url, driver, useSelenium=_useSeleniumForThisUrl, requiredSubDomain=subDomainReq)
-                urlDict[url] = urlProps
-                newurls += urlProps.anchorTagHrefs + urlProps.embeddedScriptAndAnchorTagHrefs
-                saveFileWrap.write(f'{url}\n-\t' + '\n-\t'.join(newurls))
-            urlsToSearch = [url for url in set(newurls) if url not in urlPioneer]
-            if maxSubUrls > -1:
-                urlsToSearch = urlsToSearch[:maxSubUrls]
-            urlPioneer += urlsToSearch
+    def run_url_discovery(self, domain, subDomainReq, explodeTimes:Uint=defaultSpiderExplodeDepth, saveOut:str=None):
+        
+        driver = self.driver
             
-            # for url in urlPioneer:
-            #     _i += 1
-            #     urlProps = urlDiscovery(url, driver, useSelenium=False, requiredSubDomain=subDomainReq)
-            #     urlPioneer = urlPioneer + urlProps.anchorTagHrefs + urlProps.embeddedScriptAndAnchorTagHrefs 
-            #     if _i > maxSubUrls > -1:
-            #         break
+        if UrlDiscoEngine.maxSpiderExplodeAllowed < explodeTimes:
+            warnings.warn(f'Warning: Max allowed Spider Explode to depth of: {UrlDiscoEngine.maxSpiderExplodeAllowed}')
+        fileToClose = False    
+        saveFileWrap:IFileAppender
+        if saveOut is not None:
+            fileToClose = True
+            saveFileWrap = FileAppender(saveOut).openStream()
+        else:
+            saveFileWrap = DummyFileAppender('Dummy').openStream()
+            
+        try:   
+            urlsToSearch = [domain]
+            newurls = []
+            urlPioneer = []
+            _i = 0
+            urlTree:RankPairTree = RankPairTree()
+            urlDict = {}
+            while _i < max(1,min(UrlDiscoEngine.defaultSpiderExplodeDepth,explodeTimes)):
+                _i += 1
+                newurls:list[str] = []
+                for url in urlsToSearch:
+                    _useSeleniumForThisUrl = self.useSelenium
+                    exampleUrl = urlTree.getExampleGeneralisationOf(url, removeRegexNodes=True)
+                    if exampleUrl is not None:
+                        _useSeleniumForThisUrl = False
+                        expectedHtmlProps = urlDict[exampleUrl]
+                    urlTree.embedUrl(url)
+                    urlProps = self.urlDiscovery(url, driver, useSelenium=_useSeleniumForThisUrl, requiredSubDomain=subDomainReq)
+                    urlDict[url] = urlProps
+                    newurls += urlProps.anchorTagHrefs + urlProps.embeddedScriptAndAnchorTagHrefs
+                    saveFileWrap.write(f'{url}\n-\t' + '\n-\t'.join(newurls))
+                urlsToSearch = [url for url in set(newurls) if url not in urlPioneer]
+                if self.maxSubUrls > -1:
+                    urlsToSearch = urlsToSearch[:self.maxSubUrls]
+                urlPioneer += urlsToSearch
+                
+                # for url in urlPioneer:
+                #     _i += 1
+                #     urlProps = urlDiscovery(url, driver, useSelenium=False, requiredSubDomain=subDomainReq)
+                #     urlPioneer = urlPioneer + urlProps.anchorTagHrefs + urlProps.embeddedScriptAndAnchorTagHrefs 
+                #     if _i > maxSubUrls > -1:
+                #         break
 
 
-        return urlPioneer
-    except:
-        if fileToClose != False:
-            saveFileWrap.closeStream()
-        
-        return None
+            return urlPioneer
+        except Exception as e:
+            logging.error(e)
+            print(e)
+            if fileToClose != False:
+                saveFileWrap.closeStream()
+            
+            return None
 
 
-# def save_url_discovery_output(name:str, urlDiscoveryOut:list[str]): 
-#     with open(f'../data/url_pioneer_{name}.txt', 'a+') as f:
-#         for l in urlDiscoveryOut:
-#             f.write(l)
+    # def save_url_discovery_output(name:str, urlDiscoveryOut:list[str]): 
+    #     with open(f'../data/url_pioneer_{name}.txt', 'a+') as f:
+    #         for l in urlDiscoveryOut:
+    #             f.write(l)
+def run_url_discovery_ASDA():
+        return UrlDiscoEngine(True,10).run_url_discovery('https://groceries.asda.com', 'asda.com', explodeTimes = 3, saveOut='ASDA')
 
 
-
-maxSubUrls = 10
-useSelenium = True
+    
 if __name__ == '__main__':
 
     logging.basicConfig(filename ='app.log',
@@ -306,7 +332,7 @@ if __name__ == '__main__':
     # logging.info('Opening file %r, mode = %r', filename, mode)
     # logging.debug('Got here')
     
-    urlDiscovery = _run_url_discovery('https://groceries.asda.com', 'asda.com', explodeTimes = 2, saveOut='ASDA')
+    UrlDiscoEngine(True,10).run_url_discovery('https://groceries.asda.com', 'asda.com', explodeTimes = 2, saveOut='ASDA')
     
     
 
