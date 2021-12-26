@@ -1,0 +1,37 @@
+<html lang='en'>
+
+<head>
+    <title>A Beautiful Soup Testing Document </title>
+    <meta name="description"
+        content="A Beautiful Soup Testing Document to faciliate checking anchor tags, onClick handlers etc">
+    <meta name="keywords" content="Test HTML, Search Engine Optimisation Tag Placeholder">
+    <meta name="author" content="Bishoy Harby">
+</head>
+
+<body>
+    <div style="flex: auto;">
+        <div>
+            <h3>An anchor tag</h3>
+            <a
+                href='file:///Users/joeyd/Documents/JoeyDCareer/GitHub/MasteringSpacy/Spacy_Tutorials/ner_food_ingredients/assets/test/bs4_tester2.html'>Gember
+                Anchor Link</a>
+        </div>
+        <div>
+            <h3>A button</h3>
+            <button
+                onClick='(function(){window.open("file:///Users/joeyd/Documents/JoeyDCareer/GitHub/MasteringSpacy/Spacy_Tutorials/ner_food_ingredients/assets/test/bs4_tester2.html")}())'>Go
+                to
+                Gember</button>
+        </div>
+        <p>Javascript (dynamic data) test:</p>
+        <p class='jstest' id='yesnojs'>y u bad tho?</p>
+        <script>
+            document.getElementById('yesnojs').innerHTML = 'Look at you shinin!';
+        </script>
+    </div>
+    <script>
+        window.goToGemberProfiles = (function () { window.open("file:///Users/joeyd/Documents/JoeyDCareer/GitHub/MasteringSpacy/Spacy_Tutorials/ner_food_ingredients/assets/test/bs4_tester2.html") })
+    </script>
+</body>
+
+</html>
