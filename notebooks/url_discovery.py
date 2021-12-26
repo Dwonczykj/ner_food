@@ -273,19 +273,34 @@ class UrlDiscoEngine():
             urlPioneer = []
             _i = 0
             urlTree:RankPairTree = RankPairTree()
-            urlDict = {}
+            urlDict:dict[str,UrlProps] = {}
             while _i < max(1,min(UrlDiscoEngine.defaultSpiderExplodeDepth,explodeTimes)):
                 _i += 1
                 newurls:list[str] = []
                 for url in urlsToSearch:
                     _useSeleniumForThisUrl = self.useSelenium
-                    exampleUrl = urlTree.getExampleGeneralisationOf(url, removeRegexNodes=True)
-                    if exampleUrl is not None:
-                        _useSeleniumForThisUrl = False
-                        expectedHtmlProps = urlDict[exampleUrl]
                     urlTree.embedUrl(url)
-                    urlProps = self.urlDiscovery(url, driver, useSelenium=_useSeleniumForThisUrl, requiredSubDomain=subDomainReq)
+                    exampleUrl = urlTree.getExampleGeneralisationOf(url, removeRegexNodes=True)
+                    if urlDict[exampleUrl].canUseBs4 != CanUseBs4.Unknown:
+                        _useSeleniumForThisUrl = bool(urlDict[exampleUrl].canUseBs4 == CanUseBs4.No)
+                        urlProps = self.urlDiscovery(url, driver, useSelenium=_useSeleniumForThisUrl, requiredSubDomain=subDomainReq)
+                    elif exampleUrl is not None:
+                        _useSeleniumForThisUrl = False
+                        expectedHtmlProps:UrlProps = urlDict[exampleUrl]
+                        urlProps = self.urlDiscovery(url, driver, useSelenium=_useSeleniumForThisUrl, requiredSubDomain=subDomainReq)
+                        if (urlProps.anchorTagHrefs / expectedHtmlProps.anchorTagHrefs) < 0.5:
+                            urlDict[exampleUrl].canUseBs4 = CanUseBs4.No
+                            _useSeleniumForThisUrl = True
+                            urlProps = self.urlDiscovery(url, driver, useSelenium=_useSeleniumForThisUrl, requiredSubDomain=subDomainReq)
+                            urlDict[url] = urlProps
+                            urlDict[url].canUseBs4 = CanUseBs4.No
+                        else:
+                            urlDict[url].canUseBs4 = CanUseBs4.Yes
+                            urlDict[exampleUrl].canUseBs4 = CanUseBs4.Yes
+                    else:
+                        urlProps = self.urlDiscovery(url, driver, useSelenium=_useSeleniumForThisUrl, requiredSubDomain=subDomainReq)
                     urlDict[url] = urlProps
+                        
                     newurls += urlProps.anchorTagHrefs + urlProps.embeddedScriptAndAnchorTagHrefs
                     saveFileWrap.write(f'{url}\n-\t' + '\n-\t'.join(newurls))
                 urlsToSearch = [url for url in set(newurls) if url not in urlPioneer]
