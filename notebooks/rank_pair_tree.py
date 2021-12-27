@@ -1,5 +1,6 @@
 from __future__ import annotations
 from operator import countOf
+import logging
 from os import path
 import io
 import os
@@ -112,9 +113,12 @@ class RankPairTreeUrlBuilder(abc.ABC):
 
 
 class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable, RankPairTreeUrlBuilder):
-    def __init__(self, name='root'):
+    def __init__(self, name='root', data=None):
         # assert isinstance(data, RankPair) or data is None
         super().__init__(name=name)
+        if data is not None:
+            self.data = data
+        
         # self.dataAsRankPair: RankPair = data
         
         
@@ -189,6 +193,10 @@ class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable, RankPairTreeUrlBuilde
         return ancestry
     
     def isRegexInAncestry(self, ignoreSelf:bool=False) -> bool:
+        ancs = self.ancestry()[:(-1 if ignoreSelf else None)]
+        for c in ancs:
+            if c.data is None:
+                pass
         return any(c.data['isRegexNode'] == True for c in self.ancestry()[:(-1 if ignoreSelf else None)])
     
 
@@ -202,6 +210,7 @@ class RankPairTreeRootNode(TreeNodeRoot, RankPairTreeNodeSortable, RankPairTreeU
     def __init__(self, name='root'):
         # assert isinstance(data, RankPair) or data is None
         super().__init__(name=name)
+        self.data={'isRegexNode':False}
         # self.dataAsRankPair: RankPair = data
     def getChildren(self:type[RankPairTreeRootNode]):
         return super().getChildren()
@@ -228,10 +237,17 @@ class RankPairTreeRootNode(TreeNodeRoot, RankPairTreeNodeSortable, RankPairTreeU
     urlSegment = property(_getUrlSegment)
 
     def _getUrlSegmentType(self) -> UrlMatchEnum:
-        if any((c.nodeType == UrlMatchEnum.URL_DOMAIN for c in self.children)):
-            return (UrlMatchEnum.MULTI_URL_CONTAINER if self.name == RankPairTree.TREE_ROOT_MULTI_DOMAIN_NAME else UrlMatchEnum.UNDEFINED)
-        else:
+        if self.name == RankPairTree.TREE_ROOT_MULTI_DOMAIN_NAME:
+            return UrlMatchEnum.MULTI_URL_CONTAINER
+        elif self.name.lower().startswith('http') or self.name.lower().startswith('ftp') or self.name.lower().startswith('file://'):
             return UrlMatchEnum.URL_DOMAIN
+        else:
+            return UrlMatchEnum.UNDEFINED
+            
+        # if any((c.nodeType == UrlMatchEnum.URL_DOMAIN for c in self.children)):
+        #     return (UrlMatchEnum.MULTI_URL_CONTAINER if self.name == RankPairTree.TREE_ROOT_MULTI_DOMAIN_NAME else UrlMatchEnum.UNDEFINED)
+        # else:
+        #     return UrlMatchEnum.URL_DOMAIN
 
     nodeType:UrlMatchEnum = property(_getUrlSegmentType)
 
@@ -393,7 +409,7 @@ class RankPairTree(object):
                 name=RankPairTree.TREE_ROOT_MULTI_DOMAIN_NAME
                 )
             instance.appendChild(RankPairTreeNode.withChildrenState(instance._treeState) if embed else instance._treeState)
-            instance.appendChild(RankPairTreeNode(instance._urlParser.parsedUrl.domain))
+            instance.appendChild(RankPairTreeNode(instance._urlParser.parsedUrl.domain,data={'isRegexNode':False}))
         
         nodeToAddTo = instance.getDomainNode()
 
@@ -481,8 +497,8 @@ class RankPairTree(object):
 
 
         nodesToAddTo = [nodeToAddTo]
-        alreadyExistingPathSoFar = nodeToAddTo.fullNameFromRoot
-        generalisationOfUrl:str=None
+        alreadyExistingPathSoFar = [nodeToAddTo.fullNameFromRoot]
+        # generalisationOfUrl:str=None
         for ind,trgx in enumerate(instance._urlParser.parsedUrl.paths):
             p,regx = (trgx.text, trgx.regexPatrn)
             matches = _f(p, regx, nodesToAddTo, UrlMatchEnum.URL_PATH)

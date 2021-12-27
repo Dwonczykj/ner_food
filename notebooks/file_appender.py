@@ -69,7 +69,7 @@ class FileAppender(IFileAppender):
     def openStream(self):
         self._file = open(self._fileName, 'a+')
         timestamp = datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
-        self._file.write(f'FileOpenEvent: ({timestamp})\n')
+        self._file.write(f'\nFileOpenEvent: ({timestamp})\n')
         return self
     
     def write(self, string:str):
@@ -80,7 +80,7 @@ class FileAppender(IFileAppender):
         if self._file is not None:
             try:
                 timestamp = datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
-                self._file.write(f'FileCloseEvent: ({timestamp})\n')
+                self._file.write(f'\nFileCloseEvent: ({timestamp})\n')
             except Exception as e:
                 logging.error(e)
             self._file.close()

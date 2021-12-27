@@ -104,7 +104,26 @@ def test_rankTree_get_example_generalisation():
     # assert exampleUrlGeneralisations[0] == 'https://groceries.asda.com/product/910000879998'
     pass
     
-def test_ranktree_get_example_generalisations_no_default():
+
+def test_ranktree_get_example_generalisations_returns_none_for_first_url():
+    rankTree = RankPairTree()
+    exampleUrlGeneralisation = rankTree.getExampleGeneralisationOf('https://groceries.asda.com',removeRegexNodes=True)
+    assert exampleUrlGeneralisation is None
+    pass
+
+def test_ranktree_check_example_generalisations_matches_for_2_duplicate_urls():
+    rankTree = RankPairTree()
+    urls = [
+        'https://groceries.asda.com', 
+        'https://groceries.asda.com', 
+        # 'https://groceries.asda.com/promotion/2-for-7/ls91300'
+    ]
+    rankTree.embedUrl(urls[0])
+    exampleUrlGeneralisation = rankTree.getExampleGeneralisationOf(urls[0],removeRegexNodes=True)
+    assert exampleUrlGeneralisation == urls[0]
+    pass
+    
+def test_ranktree_get_example_generalisations_doesnt_return_subpaths():
     urls = [
         'https://groceries.asda.com', 
         'https://groceries.asda.com/promotion/2-for-7/ls91300'

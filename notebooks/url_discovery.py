@@ -1,7 +1,7 @@
 from __future__ import annotations
 import abc
 from rank_pair_tree import RankPairTree
-from py_utils import nullPipe
+from py_utils import nullPipe, exception_to_string
 from os import path
 import io
 import os
@@ -26,6 +26,7 @@ import logging
 from bs4 import BeautifulSoup, SoupStrainer, Tag, NavigableString, ResultSet
 from selenium.webdriver import Safari
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException
 
 class CanUseBs4(Enum):
     No = -1
@@ -146,7 +147,7 @@ class UrlDiscoEngine():
     maxSpiderExplodeAllowed:Literal = 3
     defaultSpiderExplodeDepth:Literal = 3
     
-    def __init__(self, useSelenium:bool, maxSubUrls:int) -> None:
+    def __init__(self, useSelenium:bool, maxSubUrls:int=-1) -> None:
         self.driver:Safari = None
         self.useSelenium = useSelenium
         self.maxSubUrls = maxSubUrls
@@ -164,19 +165,47 @@ class UrlDiscoEngine():
                 if w != self._BASE_WINDOW_HANDLE_LAZY:
                     self.driver.switch_to_window(w)
                     self.driver.close()
-            self.driver.switch_to_window(self._BASE_WINDOW_HANDLE_LAZY)
+            self.driver.switch_to.window(self._BASE_WINDOW_HANDLE_LAZY)
         assert self._BASE_WINDOW_HANDLE_LAZY in self.driver.window_handles, 'BASE_WINDOW_HANDLE_LAZY not in driver.window_handles'
         assert len(self.driver.window_handles) == 1, f'{type(self.driver)} should only have 1 window open.'
         
 
     def _urlDiscoverySelenium(self,rootUrl:str, driver:Safari):
-        driver.get(rootUrl)
-        self._closeExtraSeleniumWebWindows()
-                    
-        self.find_and_agree_cookies()
-        anchorTagUrls = [we.get_attribute('href') for we in driver.find_elements(By.TAG_NAME, 'a')]
-        scriptTagUrlEmbeds = [nullPipe(re.match(URL_RE_PATTERN, str(we.text)),lambda x: x.string) for we in driver.find_elements(By.TAG_NAME, 'script')] 
-        onClickAttributeUrlEmbeds = [nullPipe(re.match(URL_RE_PATTERN, we.get_attribute('onClick')), lambda x: x.string) for we in driver.find_elements(By.CSS_SELECTOR, '[onClick]') if we.get_attribute('onClick')] 
+        try:
+            driver.get(rootUrl)
+        except Exception as e:
+            logging.error(f'Selenium Fell over trying to get: {rootUrl} with a {type(e).__name__} exception.')
+            logging.error(e)
+            
+        try:
+            self._closeExtraSeleniumWebWindows()
+        except Exception as e:
+            logging.error(f'Selenium Fell over trying to close extra selenium windows in: {rootUrl} with a {type(e).__name__} exception.')
+            
+        try:            
+            self.find_and_agree_cookies()
+        except Exception as e:
+            logging.error(f'Selenium Fell over trying to find and agree cookies in: {rootUrl} with a {type(e).__name__} exception.')
+        
+        anchorTagUrls:list[str]=[]
+        scriptTagUrlEmbeds:list[str]=[]
+        onClickAttributeUrlEmbeds:list[str]=[]
+        try:
+            anchorTagUrls = [we.get_attribute('href') for we in driver.find_elements(By.TAG_NAME, 'a')]
+            scriptTagUrlEmbeds = [nullPipe(re.match(URL_RE_PATTERN, str(we.text)),lambda x: x.string) for we in driver.find_elements(By.TAG_NAME, 'script')] 
+            onClickAttributeUrlEmbeds = [nullPipe(re.match(URL_RE_PATTERN, we.get_attribute('onClick')), lambda x: x.string) for we in driver.find_elements(By.CSS_SELECTOR, '[onClick]') if we.get_attribute('onClick')] 
+        except TimeoutException as timeoutExcp:
+            if not anchorTagUrls:
+                logging.warn(f'Selenium failed to grab anchor tag urls for {rootUrl}.')
+                anchorTagUrls = []
+            if not scriptTagUrlEmbeds:
+                logging.warn(f'Selenium failed to grab script Tag Url Embeds for {rootUrl}.')
+                scriptTagUrlEmbeds = []
+            if not onClickAttributeUrlEmbeds:
+                logging.warn(f'Selenium failed to grab onClick Attribute Url Embeds for {rootUrl}.')
+                onClickAttributeUrlEmbeds = []
+        except Exception as e:
+            logging.error(exception_to_string(e))
         # Button urls should be included in the onClick handler above.
         # buttonTagUrls = [we for we in driver.find_elements(By.TAG_NAME, 'button')]
 
@@ -273,14 +302,14 @@ class UrlDiscoEngine():
             urlPioneer = []
             _i = 0
             urlTree:RankPairTree = RankPairTree()
-            urlDict:dict[str,UrlProps] = {}
+            urlDict:dict[str,UrlProps] = defaultdict(lambda : UrlProps([], []))
             while _i < max(1,min(UrlDiscoEngine.defaultSpiderExplodeDepth,explodeTimes)):
                 _i += 1
                 newurls:list[str] = []
                 for url in urlsToSearch:
                     _useSeleniumForThisUrl = self.useSelenium
-                    urlTree.embedUrl(url)
                     exampleUrl = urlTree.getExampleGeneralisationOf(url, removeRegexNodes=True)
+                    urlTree.embedUrl(url)
                     if urlDict[exampleUrl].canUseBs4 != CanUseBs4.Unknown:
                         _useSeleniumForThisUrl = bool(urlDict[exampleUrl].canUseBs4 == CanUseBs4.No)
                         urlProps = self.urlDiscovery(url, driver, useSelenium=_useSeleniumForThisUrl, requiredSubDomain=subDomainReq)
@@ -288,7 +317,7 @@ class UrlDiscoEngine():
                         _useSeleniumForThisUrl = False
                         expectedHtmlProps:UrlProps = urlDict[exampleUrl]
                         urlProps = self.urlDiscovery(url, driver, useSelenium=_useSeleniumForThisUrl, requiredSubDomain=subDomainReq)
-                        if (urlProps.anchorTagHrefs / expectedHtmlProps.anchorTagHrefs) < 0.5:
+                        if len(expectedHtmlProps.anchorTagHrefs) > 0 and (len(urlProps.anchorTagHrefs) / len(expectedHtmlProps.anchorTagHrefs)) < 0.5:
                             urlDict[exampleUrl].canUseBs4 = CanUseBs4.No
                             _useSeleniumForThisUrl = True
                             urlProps = self.urlDiscovery(url, driver, useSelenium=_useSeleniumForThisUrl, requiredSubDomain=subDomainReq)
@@ -302,23 +331,16 @@ class UrlDiscoEngine():
                     urlDict[url] = urlProps
                         
                     newurls += urlProps.anchorTagHrefs + urlProps.embeddedScriptAndAnchorTagHrefs
-                    saveFileWrap.write(f'{url}\n-\t' + '\n-\t'.join(newurls))
+                    saveFileWrap.write(f'\n{url}\n-\t' + '\n-\t'.join(newurls))
                 urlsToSearch = [url for url in set(newurls) if url not in urlPioneer]
                 if self.maxSubUrls > -1:
                     urlsToSearch = urlsToSearch[:self.maxSubUrls]
                 urlPioneer += urlsToSearch
                 
-                # for url in urlPioneer:
-                #     _i += 1
-                #     urlProps = urlDiscovery(url, driver, useSelenium=False, requiredSubDomain=subDomainReq)
-                #     urlPioneer = urlPioneer + urlProps.anchorTagHrefs + urlProps.embeddedScriptAndAnchorTagHrefs 
-                #     if _i > maxSubUrls > -1:
-                #         break
-
-
             return urlPioneer
         except Exception as e:
             logging.error(e)
+            logging.error(exception_to_string(e))
             print(e)
             if fileToClose != False:
                 saveFileWrap.closeStream()
@@ -347,7 +369,7 @@ if __name__ == '__main__':
     # logging.info('Opening file %r, mode = %r', filename, mode)
     # logging.debug('Got here')
     
-    UrlDiscoEngine(True,10).run_url_discovery('https://groceries.asda.com', 'asda.com', explodeTimes = 2, saveOut='ASDA')
+    UrlDiscoEngine(True).run_url_discovery('https://groceries.asda.com', 'asda.com', explodeTimes = 2, saveOut='ASDA')
     
     
 
