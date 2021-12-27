@@ -5,7 +5,8 @@ from os import path, setpgid
 import io
 import os
 import re
-from typing import Generic, Optional, TypeVar
+from typing import Any, Generic, Iterable, Optional, TypeVar
+import jsonpickle
 import requests
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,13 +18,24 @@ import debugpy as debug
 import warnings
 from pprint import pprint
 import abc
+import json
 
 
 # @abc.ABC
 class ITreeNode(abc.ABC):
     def __init__(self, name:str) -> None:
-        self.data = None
-        self.name = name
+        self.data: TreeSerializable = None
+        self._data: TreeSerializable = None
+        self.name:str = name
+        
+    def _getData(self):
+        return self._data
+    
+    def _setData(self, data:TreeSerializable):
+        self._data = data
+        
+    data = property(_getData,_setData)
+    
     
     COUNT:list[int]
 
@@ -44,7 +56,7 @@ class ITreeNode(abc.ABC):
         pass
     
     def __repr__(self):
-        return TreeNode.print2D(self)
+        return TreePrintable.print2D(self)
 
     def __str__(self) -> str:
         return str([node.name for node in self.traverseInorder()])
@@ -86,9 +98,6 @@ class ITreeNode(abc.ABC):
         pass
 
 
-        
-
-# @abc.ABC
 class ITreeChildNode(ITreeNode):
     @abc.abstractmethod
     def acceptParent(self, parentNode:ITreeNode) -> bool:
@@ -96,7 +105,6 @@ class ITreeChildNode(ITreeNode):
 
 class TreePrintable(ITreeNode):
 
-    #TODO: Add tests for Ancestory functions.
     def ancestorAtLevel(self, level:Uint) -> ITreeNode:
         '''Root is level 1'''
         level = max(1,level)
@@ -345,6 +353,58 @@ class TreeTraversable(ITreeNode):
 
     def __hash__(self) -> int:
         return hash(str(self))   
+    
+T = TypeVar("T")
+TSerializable = TypeVar("TSerializable", str, Uint, int, float, None, list, dict, Sequence, Iterable, bool)
+
+class Serializable(abc.ABC):
+
+    @abc.abstractclassmethod
+    def toDict(self) -> dict[str,TSerializable]:
+        pass
+    
+    @abc.abstractclassmethod
+    def fromDict(dic:dict[str,TSerializable], objType:T) -> T:
+        pass
+    
+    # def fromJson(jsonString:str, objType:T) -> T:
+    #     d = json.loads(jsonString)
+    #     return Serializable.fromDict(d, objType=objType)
+    
+    # def toJson(self) -> str:
+    #     return json.dumps(self.toDict())
+    
+    def fromJson(jsonString: str) -> V:
+        return jsonpickle.decode(jsonString)
+    
+    def toJson(self) -> str:
+        return jsonpickle.encode(self)
+    
+    
+class TreeSerializable(ITreeNode, Serializable):
+
+    def toDict(self) -> dict[str,TSerializable]:
+        return {
+            'name': self.name,
+            'data': self.data.toDict() if isinstance(self.data,Serializable) else self.data,
+            'children': [c.toDict() for c in self.children]
+        }
+        
+    def fromDict(dic:dict[str,TSerializable], objType:V) -> V:
+        instance = type(objType)(dic['name'])
+        instance.data = dic['data']
+        for child in instance.children:
+            instance.appendChild(TreeSerializable.fromDict(child))
+        return instance
+        
+    # def fromJson(jsonString:str, objType:V) -> V:
+    #     d = json.loads(jsonString)
+    #     return Serializable.fromDict(d, objType=objType)
+    
+    
+
+V = TypeVar("V")
+
 
     
 class TreeRootNode(ITreeChildNode):
@@ -396,7 +456,7 @@ class TreeRootNode(ITreeChildNode):
 
 T = TypeVar('T',bound=TreeRootNode)
 
-class TreeRootNodeBase(TreeRootNode, TreePrintable, TreeTraversable):
+class TreeRootNodeBase(TreeRootNode, TreePrintable, TreeTraversable, TreeSerializable):
     "Generic tree node."
     def __init__(self, name='root', data=None, children:list[ITreeChildNode]=None):
         super().__init__(name)

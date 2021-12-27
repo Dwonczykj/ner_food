@@ -1,7 +1,9 @@
 
+from _pytest.capture import _readline_workaround
 import pytest
 from pprint import pprint
 from pytest import CaptureFixture
+from notebooks.rank_pair_tree import RankPair, RankPairTreeNode
 
 from rank_pair_tree import RankPairTree
 
@@ -134,6 +136,7 @@ def test_ranktree_get_example_generalisations_doesnt_return_subpaths():
     assert exampleUrlGeneralisation is None
     exampleUrlGeneralisations = rankTree.getAllExampleGeneralisationsOf(url,removeRegexNodes=True)
     assert exampleUrlGeneralisations is None or exampleUrlGeneralisations == []
+    pass
     
 def test_ranktree_get_example_generalisations_should_not_match():
     urls = [
@@ -154,6 +157,42 @@ def test_ranktree_get_example_generalisations_should_not_match():
     assert exampleUrlGeneralisations is None or exampleUrlGeneralisations == []
     exampleUrlGeneralisation = rankTree.getExampleGeneralisationOf(url,removeRegexNodes=True)
     assert exampleUrlGeneralisation is None
+    pass
+    
+def test_ranktree_is_serializable():
+    urls = [
+        'https://groceries.asda.com', 
+        'https://groceries.asda.com/promotion',
+        'https://groceries.asda.com/product', 
+        # 'https://groceries.asda.com/promotion/2-for-7/ls91300',
+        # 'https://groceries.asda.com/product/1000338629556', 
+        # 'https://groceries.asda.com/super_dept/veganuary/1215686171560', 
+        # 'https://groceries.asda.com/cat/fresh-food-bakery/103099', 
+        # 'https://groceries.asda.com/product/1000334423970',
+    ]
+    rankTree = RankPairTree(urls[0])
+    for url in urls[1:]:
+        rankTree.embedUrl(url)
+    rankTreeJson = rankTree.toJson()
+    copyTreeFromJson = RankPairTree.fromJson(rankTreeJson)
+    # assert rankTreeDict == {
+    #     'initialised': True,
+    #     '_treeState': {
+    #         'name': ''
+    #     }
+    # }
+    assert str(copyTreeFromJson) == str(rankTree)
+    assert copyTreeFromJson.__repr__() == rankTree.__repr__()
     
     
+    def _checkNodesEqual(node1:RankPairTreeNode, node2:RankPairTreeNode):
+        assert type(node1) == type(node2)
+        assert node1.name == node2.name
+        assert node1.data == node2.data
+        assert len(node1.children) == len(node2.children)
+        for i, childTuple in enumerate(zip(node1.children, node2.children)):
+            _checkNodesEqual(childTuple[0], childTuple[1])
     
+    _checkNodesEqual(rankTree, copyTreeFromJson)
+    
+    pass

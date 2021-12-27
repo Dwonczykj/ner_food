@@ -16,10 +16,11 @@ from enum import Enum, IntEnum
 import debugpy as debug
 import warnings
 from pprint import pprint
-from tree_node import ITreeNode
+from tree_node import ITreeNode, TSerializable, Serializable, TreeSerializable
 import abc
 from url_parser import UrlMatchEnum
 from py_utils import predicatePipe
+import jsonpickle
 
 
 from tree_node import TreeNode, TreeNodeRoot, TreeRootNodeBase
@@ -111,8 +112,31 @@ class RankPairTreeUrlBuilder(abc.ABC):
 
     urlSegment = property(_getUrlSegment)
 
+class RankPairTreeNodeSerializable(TreeSerializable):
+    def toDict(self) -> dict[str,TSerializable]:
+        return {
+            '__type__': type(self),
+            'name': self.name,
+            'data': self.data.toDict() if isinstance(self.data,Serializable) else self.data,
+            'children': [c.toDict() for c in self.children]
+        }
+        
+    def fromDict(dic:dict[str,TSerializable], objType:V) -> V:
+        instance = type(objType)(dic['name'])
+        instance.data = dic['data']
+        for child in instance.children:
+            instance.appendChild(TreeSerializable.fromDict(child))
+        return instance
+    
+    def fromJson(jsonString: str, objType: V) -> V:
+        return jsonpickle.decode(jsonString)
+    
+    def toJson(self) -> str:
+        return jsonpickle.encode(self)
+        
 
-class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable, RankPairTreeUrlBuilder):
+
+class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable, RankPairTreeUrlBuilder, RankPairTreeNodeSerializable):
     def __init__(self, name='root', data=None):
         # assert isinstance(data, RankPair) or data is None
         super().__init__(name=name)
@@ -206,7 +230,7 @@ class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable, RankPairTreeUrlBuilde
     fullNameFromRoot:str = property(getFullNameFromRoot)
                 
 
-class RankPairTreeRootNode(TreeNodeRoot, RankPairTreeNodeSortable, RankPairTreeUrlBuilder):
+class RankPairTreeRootNode(TreeNodeRoot, RankPairTreeNodeSortable, RankPairTreeUrlBuilder, RankPairTreeNodeSerializable):
     def __init__(self, name='root'):
         # assert isinstance(data, RankPair) or data is None
         super().__init__(name=name)
@@ -340,10 +364,11 @@ class RankPairTreeRegexNode(RankPairTreeNode):
     urlSegment = property(_getUrlSegment)
 
 
-class RankPairTree(object):
+class RankPairTree(Serializable):
 
     def __init__(self, url:str=None):
         # super.__init__(self)
+        self.__type__ = type(self)
         self._urlParser:ParsedUrlParser = None
         self._treeState:RankPairTreeRootNode = None
         self.initialised:bool = False
@@ -362,6 +387,17 @@ class RankPairTree(object):
 
     def copyDeep(self) -> RankPairTree:
         return RankPairTree.fromState(self._treeState)
+    
+    def fromDict(dic: dict[str, TSerializable], objType: type[RankPairTree]) -> RankPairTree:
+        instance = RankPairTree.fromState(RankPairTreeNode.fromDict(dic['_treeState'], RankPairTreeNode))
+        instance.initialised = dic['initialised']
+    
+    def toDict(self) -> dict[str, TSerializable]:
+        return {
+            '_treeState': self._treeState.toDict(),
+            'initialised': self.initialised
+        }
+
 
 
     def embedUrl(self, url:str):
