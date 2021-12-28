@@ -23,7 +23,7 @@ from py_utils import predicatePipe
 import jsonpickle
 
 
-from tree_node import TreeNode, TreeNodeRoot, TreeRootNodeBase
+from tree_node import TreeNode, TreeNodeRoot, TreeRootNodeBase, draw_new_tree, save_pydot_to_png
 from url_parser import ParsedUrlParser
 
 
@@ -133,10 +133,89 @@ class RankPairTreeNodeSerializable(TreeSerializable):
     
     def toJson(self) -> str:
         return jsonpickle.encode(self)
+    
+class RankPairTreeRank():
+    def __init__(self, **kwargs) -> None:
+        self.isRegexNode = kwargs['isRegexNode']
+        self.pathFrequency = kwargs['pathFrequency']
+        self.regexNodesInTreeDescendency = kwargs['regexNodesInTreeDescendency']
+        self.fullUrl = kwargs['fullUrl']
+        
+    def __eq__(self, __o: RankPairTreeRank) -> bool:
+        return bool(
+            self.isRegexNode == __o.isRegexNode and 
+            self.pathFrequency == __o.pathFrequency and 
+            self.regexNodesInTreeDescendency == __o.regexNodesInTreeDescendency and 
+            self.fullUrl == __o.fullUrl
+        )
         
 
+class RankPairTreeNodeRankable(TreeRootNodeBase):
+    
+    def _loadTreeRank(self):
+        pass
+    
+    def getTreeRank(self):
+        return self.treeRankInSubTree(self)
+    
+    def treeRankInSubTree(self, subTreeNode:RankPairTreeNodeRankable):
+    
+        if hasattr(self,'parent'):
+            myself:RankPairTreeNode = self
+            return myself.parent.treeRankInSubTree(subTreeNode)
+            
+        allNodes = self.traversePreorder()
+        # leafRanks = []
+        maxRank = {
+            'isRegexNode':False,
+            'pathFrequency': 0, 
+            'regexNodesInTreeDescendency': 0,
+            'fullUrl': ''
+            }
+        
+        for ind, node in enumerate(allNodes):
+            # Calculate the rank pair for each node, traverseInOrder guarantees that the parent is calculated first. Set on the data attribute not removing whats already there.
+            if node.data['isRegexNode'] != True:
+                pathFrequency = 1 #as not a regex generalisation so can only refer to one path
+                if isinstance(node, RankPairTreeRootNode):
+                    regexNodesInTreeDescendency = 0 
+                elif isinstance(node, RankPairTreeNode):
+                    regexNodesInTreeDescendency = node.parent.data['regexNodesInTreeDescendency']
+                else:
+                    regexNodesInTreeDescendency = 0
+            else:
+                pathFrequency = node.getNumSiblingsOfPathType()
+                assert isinstance(node, RankPairTreeNode), f'Regex Nodes must be of type {RankPairTreeNode.__name__}, not {type(node)}'
+                regexNodesInTreeDescendency = node.parent.data['regexNodesInTreeDescendency'] + 1
+            
+            node.data = {
+                **node.data, 
+                **{
+                    'pathFrequency': pathFrequency, 
+                    'regexNodesInTreeDescendency': regexNodesInTreeDescendency,
+                    'fullUrl': node.fullNameFromRoot
+                }
+            }
 
-class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable, RankPairTreeUrlBuilder, RankPairTreeNodeSerializable):
+            
+            if not node.children and subTreeNode in node.ancestry():
+                # leafRanks.append(node.data)
+
+                if node.data['pathFrequency'] > maxRank['pathFrequency']:
+                    maxRank = node.data
+                elif node.data['pathFrequency'] == maxRank['pathFrequency'] and node.data['regexNodesInTreeDescendency'] < maxRank['regexNodesInTreeDescendency']:
+                    maxRank = node.data
+        
+
+            
+            
+        # Return the max rank pair       
+        return RankPairTreeRank(**maxRank)
+    
+    treeRank:RankPairTreeRank = property(getTreeRank)
+                
+
+class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable, RankPairTreeUrlBuilder, RankPairTreeNodeSerializable, RankPairTreeNodeRankable):
     def __init__(self, name='root', data=None):
         # assert isinstance(data, RankPair) or data is None
         super().__init__(name=name)
@@ -202,7 +281,7 @@ class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable, RankPairTreeUrlBuilde
         instance = RankPairTreeNode(name=state.name)
         instance.data = state.data
         for child in state.children:
-            instance.appendChild(RankPairTreeNode.withChildrenState(child.children))
+            instance.appendChild(RankPairTreeNode.withChildrenState(child))
         return instance
         # instance._children = state._children 
 
@@ -228,9 +307,9 @@ class RankPairTreeNode(TreeNode, RankPairTreeNodeSortable, RankPairTreeUrlBuilde
         return ''.join([(f'{a.urlSegment}') for a in self.ancestry()])
 
     fullNameFromRoot:str = property(getFullNameFromRoot)
-                
+    
 
-class RankPairTreeRootNode(TreeNodeRoot, RankPairTreeNodeSortable, RankPairTreeUrlBuilder, RankPairTreeNodeSerializable):
+class RankPairTreeRootNode(TreeNodeRoot, RankPairTreeNodeSortable, RankPairTreeUrlBuilder, RankPairTreeNodeSerializable, RankPairTreeNodeRankable):
     def __init__(self, name='root'):
         # assert isinstance(data, RankPair) or data is None
         super().__init__(name=name)
@@ -304,11 +383,11 @@ class RankPairTreeQueryKeyNode(RankPairTreeTextNode):
     def _getUrlSegment(self):
         arg = ''
         if self.parent.nodeType == UrlMatchEnum.URL_PATH:
-            arg = '?'
+            arg = ''
         elif self.parent.nodeType == UrlMatchEnum.URL_QUERY_VALUE:
             arg = '&'
         elif self.parent.nodeType == UrlMatchEnum.URL_DOMAIN:
-            arg = '?'
+            arg = ''
         else:
             arg = ''
         return f'{arg}{self.name}'
@@ -398,7 +477,10 @@ class RankPairTree(Serializable):
             'initialised': self.initialised
         }
 
-
+    def drawGraph(self, outFileName:str=None):
+        graph = draw_new_tree(self._treeState)
+        if outFileName is not None:
+            save_pydot_to_png(graph, outFileName)
 
     def embedUrl(self, url:str):
         return self._processUrl(url, embed=True)[0]
@@ -441,11 +523,13 @@ class RankPairTree(Serializable):
                 name=instance._urlParser.parsedUrl.domain
                 )
         elif instance._treeState.name != instance._urlParser.parsedUrl.domain:
+            current_tree = RankPairTreeNode.withChildrenState(instance._treeState) if embed else instance._treeState
+            new_subdomain = RankPairTreeNode(instance._urlParser.parsedUrl.domain,data={'isRegexNode':False})
             instance._treeState = RankPairTreeRootNode(
                 name=RankPairTree.TREE_ROOT_MULTI_DOMAIN_NAME
                 )
-            instance.appendChild(RankPairTreeNode.withChildrenState(instance._treeState) if embed else instance._treeState)
-            instance.appendChild(RankPairTreeNode(instance._urlParser.parsedUrl.domain,data={'isRegexNode':False}))
+            instance.appendChild(current_tree)
+            instance.appendChild(new_subdomain)
         
         nodeToAddTo = instance.getDomainNode()
 
@@ -520,15 +604,25 @@ class RankPairTree(Serializable):
                         continue
                     else:
                         # Find a more generic regex pattern for the regex child of nodeToAddTo and replace it.
-                        currentRegexNode:RankPairTreeRegexNode = next((rgxNode for rgxNode in nodeToAddTo.children if rgxNode.data['isRegexNode'] == True))
-                        pathRegexNode = RankPairTreeRegexNode(
-                            name=(
-                                regx if all(
-                                    (re.match(regx, c.name) 
-                                     for c in [*nodeToAddTo.children, RankPairTreePathNode(currentRegexNode,name=p)]
-                                     )) else RankPairTree._getSubRePattern(*[n.name for n in nodeToAddTo.children if n.data['isRegexNode'] == False])
-                                )
-                            )
+                        _dummyRegexNode:RankPairTreeRegexNode = next((rgxNode for rgxNode in nodeToAddTo.children if rgxNode.data['isRegexNode'] == True))
+                        newSubPattern = RankPairTree._getSubRePattern(*[n.name for n in [*nodeToAddTo.children, RankPairTreePathNode(_dummyRegexNode,name=p)] if n.data['isRegexNode'] == False])
+                        # pathRegexNode = RankPairTreeRegexNode(
+                        #     name=(
+                        #         newSubPattern if newSubPattern else regx
+                        #     )
+                        # )
+                        _dummyRegexNode.name = newSubPattern if newSubPattern else regx
+                        newTextNode = RankPairTreePathNode(_dummyRegexNode,name=p)
+                        textNodeAtPos = nodeToAddTo.children.index(_dummyRegexNode)
+                        (nodeToAddTo
+                        .appendChild(newTextNode, atPosition=textNodeAtPos)
+                        )
+                        matches += [
+                            (newTextNode,None)
+                        ]
+                        continue
+                        
+                        
             return matches
 
 
@@ -583,57 +677,19 @@ class RankPairTree(Serializable):
                 node.sortChildren()
 
     def getTreeRank(self):
-        allNodes = self._treeState.traversePreorder()
-        # leafRanks = []
-        maxRank = {
-            'isRegexNode':False,
-            'pathFrequency': 0, 
-            'regexNodesInTreeDescendency': 0
-            }
-        
-        for ind, node in enumerate(allNodes):
-            # Calculate the rank pair for each node, traverseInOrder guarantees that the parent is calculated first. Set on the data attribute not removing whats already there.
-            if node.data['isRegexNode'] != True:
-                pathFrequency = 1 #as not a regex generalisation so can only refer to one path
-                if isinstance(node, RankPairTreeRootNode):
-                    regexNodesInTreeDescendency = 0 
-                elif isinstance(node, RankPairTreeNode):
-                    regexNodesInTreeDescendency = node.parent.data['regexNodesInTreeDescendency']
-                else:
-                    regexNodesInTreeDescendency = 0
-            else:
-                pathFrequency = node.getNumSiblingsOfPathType()
-                assert isinstance(node, RankPairTreeNode), f'Regex Nodes must be of type {RankPairTreeNode.__name__}, not {type(node)}'
-                regexNodesInTreeDescendency = node.parent.data['regexNodesInTreeDescendency'] + 1
-            node.data = {
-                **node.data, 
-                **{
-                    'pathFrequency': pathFrequency, 
-                    'regexNodesInTreeDescendency': regexNodesInTreeDescendency
-                }
-            }
+        return self._treeState.treeRank
 
-            # If node is a leaf, i.e. no children, then record the rankpair result in an array
-            if not node.children:
-                # leafRanks.append(node.data)
-
-                if node.data['pathFrequency'] > maxRank['pathFrequency']:
-                    maxRank = node.data
-                elif node.data['pathFrequency'] == maxRank['pathFrequency'] and node.data['regexNodesInTreeDescendency'] < maxRank['regexNodesInTreeDescendency']:
-                    maxRank = node.data
-        
-
-            
-            
-        # Return the max rank pair       
-        return maxRank
-
-    TreeRank = property(getTreeRank)
+    treeRank:RankPairTreeRank = property(getTreeRank)
 
     def _getData(self):
         return self._treeState.data
     
     data = property(_getData)
+    
+    def _getTreeState(self):
+        return self._treeState
+
+    treeState:RankPairTreeRootNode = property(_getTreeState)
 
     def __repr__(self) -> str:
         return self._treeState.__repr__()
@@ -680,7 +736,15 @@ class RankPairTree(Serializable):
             return None
 
     def getLeaves(self) -> list[RankPairTreeNode]:
-        domain = self._urlParser.parsedUrl.domain
+        # domain = self._urlParser.parsedUrl.domain
+        if self._treeState.name == RankPairTree.TREE_ROOT_MULTI_DOMAIN_NAME:
+            domainNodes = [n for n in self._treeState.children]
+            return [leaf for domainNode in domainNodes for leaf in domainNode.getLeaves()]
+        else:
+            return self._treeState.getLeaves()
+        
+    def getLeavesForDomain(self, domain:str) -> list[RankPairTreeNode]:
+        # domain = self._urlParser.parsedUrl.domain
         if self._treeState.name == domain:
             return self._treeState.getLeaves()
         elif self._treeState.name == RankPairTree.TREE_ROOT_MULTI_DOMAIN_NAME:
@@ -696,7 +760,7 @@ class RankPairTree(Serializable):
     def getDepth(self):
         return self._treeState.numberOfLayers
     
-    depth = property(getDepth)
+    depth:Uint = property(getDepth)
 
     TREE_ROOT_DEFAULT_NAME = 'root'
 
@@ -722,10 +786,9 @@ class RankPairTree(Serializable):
         if not testStrings:
             return None
 
-        for testStr in testStrings:
-            for pattern in tryPatternsDecreasingSpecificity.keys():
-                if re.match(pattern, testStr):
-                    tryPatternsDecreasingSpecificity[pattern] = True
+        for pattern in tryPatternsDecreasingSpecificity.keys():
+            if all(re.match(pattern, testStr) for testStr in testStrings):
+                tryPatternsDecreasingSpecificity[pattern] = True
                 
         for pattern in tryPatternsDecreasingSpecificity.keys():
             if tryPatternsDecreasingSpecificity[pattern] == True:

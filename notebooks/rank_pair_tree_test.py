@@ -3,7 +3,7 @@ from _pytest.capture import _readline_workaround
 from pytest import CaptureFixture
 import pytest
 from pprint import pprint
-from rank_pair_tree import RankPair, RankPairTreeNode, RankPairTree
+from rank_pair_tree import RankPair, RankPairTreeNode, RankPairTree, RankPairTreeRank
 
 
 def test_rankTree_builds_correct_layers():
@@ -37,7 +37,7 @@ def test_rankTree_builds_correct_layers(capfd:CaptureFixture[str]):
 #             |       ----^[0-9A-Za-z]+$
 #             ----sid-|
 #                     ----QZ932''')
-    print(rankTree.TreeRank)
+    print(rankTree.treeRank)
     # capfd.
     # out, err = capfd.readouterr()
     assert rankTree.depth == 4, f'RankTree should have 4 layers for url: {_testUrl}, not {rankTree.depth}'
@@ -49,7 +49,7 @@ def test_rankTree_builds_correct_layers_complex():
     _testUrl = 'https://groceries.asda.com/product/natural-plain-organic/fage-total-fat-free-greek-recipe-natural-yogurt/24771357?sid=12534Q&style=green'
     rankTree = RankPairTree(_testUrl)
     pprint(rankTree)
-    print(rankTree.TreeRank)
+    print(rankTree.treeRank)
     pass
 
 def test_rankTree_2_urls():
@@ -59,7 +59,7 @@ def test_rankTree_2_urls():
     assert rankTree._treeState.children[1].fullNameFromRoot.startswith('https://acme.com/')
     _testUrl2 = 'https://acme.com/forum?sid=QZ933'
     rankTree.embedUrl(_testUrl2)
-    treeRank = rankTree.TreeRank
+    treeRank = rankTree.treeRank
     assert treeRank['isRegexNode'] == True, 'treeRank[\'isRegexNode\'] should be True'
     assert treeRank['pathFrequency'] == 2, 'treeRank[\'pathFrequency\'] should be 2'
     assert treeRank['regexNodesInTreeDescendency'] == 1, 'treeRank[\'regexNodesInTreeDescendency\'] should be 1'
@@ -197,6 +197,113 @@ def test_ranktree_is_serializable():
         for i, childTuple in enumerate(zip(node1.children, node2.children)):
             _checkNodesEqual(childTuple[0], childTuple[1])
     
-    _checkNodesEqual(rankTree, copyTreeFromJson)
+    _checkNodesEqual(rankTree.treeState, copyTreeFromJson.treeState)
     
     pass
+
+
+def test_ranktree_can_store_multiple_domains():
+    urls = [
+        'https://groceries.asda.com/promotion/2-for-7/ls91300', 
+        'https://money.asda.com/insurance/car-insurance'
+    ]
+    rankTree = RankPairTree(urls[0])
+    for url in urls[1:]:
+        rankTree.embedUrl(url)
+    
+    assert rankTree.treeState.name == RankPairTree.TREE_ROOT_MULTI_DOMAIN_NAME
+    
+    assert rankTree.treeState.children[0].name == 'https://groceries.asda.com'
+    assert rankTree.treeState.children[1].name == 'https://money.asda.com'
+    assert len(rankTree.treeState.children) == 2
+    
+    assert rankTree.depth == 5
+    
+def test_ranktree_can_parse_query():
+    urls = [
+        'https://money.asda.com/insurance/car-insurance',
+        # 'https://money.asda.com/insurance/car-insurance?utm_source=ghs&utm_medium=footer&utm_campaign=car-insurance',
+        'https://money.asda.com/insurance/car-insurance/?utm_source=ghs&utm_medium=footer&utm_campaign=car-insurance',
+    ]
+    rankTree = RankPairTree(urls[0])
+    for url in urls[1:]:
+        rankTree.embedUrl(url)
+    
+    assert rankTree.depth == 9
+    
+def test_ranktree_can_be_ranked():
+    urls = [
+        'https://groceries.asda.com', 
+        'https://groceries.asda.com', 
+        'https://groceries.asda.com/promotion/2-for-7/ls91300', 
+        'https://groceries.asda.com/promotion/3-for-1/87435', 
+        'https://groceries.asda.com/promotion/buy-one-get-one-free/xt9875', 
+        'https://groceries.asda.com/product/1000338629556', 
+        'https://groceries.asda.com/super_dept/veganuary/1215686171560', 
+        'https://groceries.asda.com/cat/fresh-food-bakery/103099', 
+        'https://groceries.asda.com/product/1000334423970', 
+        'https://groceries.asda.com/cat/fresh-food-bakery/107823', 
+        'https://groceries.asda.com/cat/fresh-food-bakery/997463', 
+        'https://groceries.asda.com/cat/lader/123765', 
+        'https://groceries.asda.com/product/18883', 
+        'https://groceries.asda.com/product/1000330481079', 
+        'https://groceries.asda.com/product/1000237774511', 
+        'https://groceries.asda.com/cat/lader/198354', 
+        'https://groceries.asda.com/event/gino_dacampo_view_all',
+    ]
+    rankTree = RankPairTree(urls[0])
+    for url in urls[1:]:
+        rankTree.embedUrl(url)
+    treeRank = rankTree.treeRank
+    assert treeRank == RankPairTreeRank(**{
+        'isRegexNode':True,
+        'pathFrequency': 8, 
+        'regexNodesInTreeDescendency': 3,
+        'fullUrl': 'https://groceries.asda.com/<regex>^[A-Za-z]+$</regex>/<regex>^[0-9A-Za-z\\-]+$</regex>/<regex>^[0-9A-Za-z]+$</regex>'
+    })
+    
+def test_ranktree_subnode_can_be_ranked():
+    urls = [
+        'https://groceries.asda.com', 
+        'https://groceries.asda.com', 
+        'https://groceries.asda.com/promotion/2-for-7/ls91300', 
+        'https://groceries.asda.com/promotion/3-for-1/87435', 
+        'https://groceries.asda.com/promotion/buy-one-get-one-free/xt9875', 
+        'https://groceries.asda.com/product/1000338629556', 
+        'https://groceries.asda.com/super_dept/veganuary/1215686171560', 
+        'https://groceries.asda.com/cat/fresh-food-bakery/103099', 
+        'https://groceries.asda.com/product/1000334423970', 
+        'https://groceries.asda.com/cat/fresh-food-bakery/107823', 
+        'https://groceries.asda.com/cat/fresh-food-bakery/997463', 
+        'https://groceries.asda.com/cat/lader/123765', 
+        'https://groceries.asda.com/product/18883', 
+        'https://groceries.asda.com/product/1000330481079', 
+        'https://groceries.asda.com/product/1000237774511', 
+        'https://groceries.asda.com/cat/lader/198354', 
+        'https://groceries.asda.com/event/gino_dacampo_view_all/?sid=uxvtr',
+        'https://groceries.asda.com/event/gino_dacampo_view_all/?sid=1834f',
+    ]
+    rankTree = RankPairTree(urls[0])
+    for url in urls[1:]:
+        rankTree.embedUrl(url)
+    
+    
+    productChild = next((c for c in rankTree.children if c.name == 'product'),None)
+    assert productChild is not None
+    treeRank = productChild.treeRank
+    assert treeRank == RankPairTreeRank(**{
+        'isRegexNode':True,
+        'pathFrequency': 5, 
+        'regexNodesInTreeDescendency': 1,
+        'fullUrl': 'https://groceries.asda.com/product/<regex>^[0-9]+$</regex>'
+    })
+    eventChild = next((c for c in rankTree.children if c.name == 'event'),None)
+    assert eventChild is not None
+    treeRank = eventChild.treeRank
+    assert treeRank == RankPairTreeRank(**{
+        'isRegexNode': True,
+        'pathFrequency': 2, 
+        'regexNodesInTreeDescendency': 1,
+        'fullUrl': 'https://groceries.asda.com/event/gino_dacampo_view_all/?sid=<regex>^[0-9A-Za-z]+$</regex>'  
+    })
+    

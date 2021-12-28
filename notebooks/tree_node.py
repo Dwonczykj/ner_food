@@ -19,6 +19,75 @@ import warnings
 from pprint import pprint
 import abc
 import json
+import pydot
+import uuid
+
+ 
+os.environ["PATH"] += os.pathsep + "/usr/local/Cellar/graphviz/2.50.0/bin"
+
+# graph = pydot.Dot(graph_type="graph", rankdir="UD")
+
+# root = "Pydot"
+# edge = pydot.Edge(root, "How to install it")
+# graph.add_edge(edge)
+
+# graph.write_png("Hello.png")
+
+# graph = pydot.Dot('my_graph', graph_type='graph', bgcolor='yellow')
+
+# # Add nodes
+# my_node = pydot.Node('a', label='Foo')
+# graph.add_node(my_node)
+# # Or, without using an intermediate variable:
+# graph.add_node(pydot.Node('b', shape='circle'))
+
+# # Add edges
+# my_edge = pydot.Edge('a', 'b', color='blue')
+# graph.add_edge(my_edge)
+# # Or, without using an intermediate variable:
+# graph.add_edge(pydot.Edge('b', 'c', color='blue'))
+
+# graph.add_edge(pydot.Edge('b', 'd', style='dotted'))
+
+# graph.set_bgcolor('lightyellow')
+# graph.get_node('b')[0].set_shape('box')
+
+# graph.write_png("Hello.png")
+
+
+def draw_new_tree(tree: TreeRootNodeBase) -> pydot.Dot:
+    return _draw_tree_nodes_on_graph(tree, pydot.Dot(graph_type="graph", rankdir="UD"))
+
+def _draw_tree_nodes_on_graph(tree: TreeRootNodeBase, graph: pydot.Dot=pydot.Dot(graph_type="graph", rankdir="UD")) -> pydot.Dot:
+    graph.set_node_defaults(shape='box', style="filled", color="black", fillcolor="white", fontname='helvetica')
+    graph.set_edge_defaults(fontname='helvetica')
+    
+    root_node = pydot.Node(str(uuid.uuid4()), label=tree.name)
+    guid = root_node.get_name()
+    graph.add_node(root_node)
+    
+    _add_to_dot_node(root_node, tree, graph)
+    
+    return graph
+     
+def _add_to_dot_node(node: pydot.Node, treeNode: TreeRootNodeBase, graph: pydot.Dot):
+    for cNode in treeNode.children:
+        child_node = pydot.Node(str(uuid.uuid4()), label=cNode.name)
+        edge = pydot.Edge(node.get_name(), child_node)
+        child_guid = edge.get_destination()
+        child_label = child_node.get_attributes()['label']
+        graph.add_edge(edge)
+        graph.add_node(child_node)
+        if cNode.children:
+            _add_to_dot_node(child_node, cNode, graph)
+    
+def save_pydot_to_png(graph:pydot.Dot, fileName:str):
+    graph.write_png(os.path.splitext(os.path.basename(fileName))[0] + '.png')
+    
+def view_graph(graph:pydot.Dot):
+    from IPython.display import Image, display
+    plt = Image(graph.create_png())
+    display(plt)
 
 
 # @abc.ABC
@@ -477,6 +546,11 @@ class TreeRootNodeBase(TreeRootNode, TreePrintable, TreeTraversable, TreeSeriali
 
     def __hash__(self) -> int:
         return hash(str(self))
+    
+    def drawGraph(self, outFileName:str=None):
+        graph = draw_new_tree(self)
+        if outFileName is not None:
+            save_pydot_to_png(graph, outFileName)
     
     def copyDeep(self:T) -> T:
         kwargs = {}

@@ -88,7 +88,7 @@ class ParsedUrlParser():
 
     URL_PATH_MATCH = r'^(({0}\/[\w-]+))'.format(reNoCapt)
 
-    URL_QUERY_FLAG_MATCH = r'^\?'
+    URL_QUERY_FLAG_MATCH = r'^\?|\/\?'
     
     URL_QUERY_KEY_MATCH = r'^(?:&)?([^\=\&]+)'
     URL_QUERY_VALUE_MATCH = r'^(?:=)([^\=\&]+)'
