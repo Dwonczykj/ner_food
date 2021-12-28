@@ -50,13 +50,13 @@ def test_can_get_tree_leaves():
     leaves = tree.getLeaves()
     for n in leaves:
         # assert(f'TreeNode_Layer_2_child' in n.name, 'Tree.getLeaves returns nodes that arent leaves')
-        assert(not(n.children), 'getLeaves() returns nodes with children')
-    assert(len(leaves)==4, 'getLeaves() return incorrect number of leaves in the tree')
+        assert not(n.children), 'getLeaves() returns nodes with children'
+    assert len(leaves)==4, 'getLeaves() return incorrect number of leaves in the tree'
     pass
 
 def test_tree_can_count_its_layers():
     tree = _build_complex_tree()
-    assert(tree.numberOfLayers == 3, 'Tree cannot correctly count its layers, should be 3.')
+    assert tree.numberOfLayers == 3, 'Tree cannot correctly count its layers, should be 3.'
     pass
 
 

@@ -1,11 +1,10 @@
 
 from _pytest.capture import _readline_workaround
+from pytest import CaptureFixture
 import pytest
 from pprint import pprint
-from pytest import CaptureFixture
-from notebooks.rank_pair_tree import RankPair, RankPairTreeNode
+from rank_pair_tree import RankPair, RankPairTreeNode, RankPairTree
 
-from rank_pair_tree import RankPairTree
 
 def test_rankTree_builds_correct_layers():
     
@@ -13,6 +12,7 @@ def test_rankTree_builds_correct_layers():
     rankTree = RankPairTree(_testUrl)
     pprint(rankTree)
     assert rankTree.depth == 9, f'RankTree should have 9 layers for url: {_testUrl}, not {rankTree.depth}'
+    pass
 
 
 def test_rankTree_builds_correct_layers(capfd:CaptureFixture[str]):
@@ -42,6 +42,7 @@ def test_rankTree_builds_correct_layers(capfd:CaptureFixture[str]):
     # out, err = capfd.readouterr()
     assert rankTree.depth == 4, f'RankTree should have 4 layers for url: {_testUrl}, not {rankTree.depth}'
     assert rankTree.data['pathFrequency'] == 1 and rankTree.data['regexNodesInTreeDescendency'] == 0 
+    pass
 
 def test_rankTree_builds_correct_layers_complex():
     
@@ -49,6 +50,7 @@ def test_rankTree_builds_correct_layers_complex():
     rankTree = RankPairTree(_testUrl)
     pprint(rankTree)
     print(rankTree.TreeRank)
+    pass
 
 def test_rankTree_2_urls():
     
@@ -63,6 +65,7 @@ def test_rankTree_2_urls():
     assert treeRank['regexNodesInTreeDescendency'] == 1, 'treeRank[\'regexNodesInTreeDescendency\'] should be 1'
     rankTree.sortTree()
     pprint(rankTree)
+    pass
 
 def test_rankTree_multi_urls():
     urls = [
@@ -82,6 +85,7 @@ def test_rankTree_multi_urls():
         rankTree.embedUrl(url)
         rankTree.sortTree()
     assert rankTree.__repr__() == ('                    ----^[0-9A-Za-z]+$\n                    ----103099\n            ----^[0-9A-Za-z\\-]+$\n            |       ----617635960\n            |       ----ls91619\n                    ----^[0-9A-Za-z\\-]+$\n            ----Crunchy-cheese-bites\n            |       ----384e188d-2aff-11e9-8802-7daf07a34f81\n            ----1000329097857\n            ----1000275697716\n                    ----^[0-9]+$\n            ----fresh-food-bakery\n            |       ----103099\n    ----^[A-Za-z]+$\n    |       ----1000005036703\n    |       ----910000879998\n    |       |       ----^[0-9]+$\n    |       ----vegan-plant-based\n    |               ----617635960\n    |       |       ----^[0-9A-Za-z]+$\n    |       ----2-for-4\n    |               ----ls91619\n                    ----^[0-9A-Za-z\\-]+$\n            ----^[0-9A-Za-z\\-]+$\n            |       ----384e188d-2aff-11e9-8802-7daf07a34f81\n    ----recipes\n    |       |       ----^[0-9A-Za-z\\-]+$\n    |       ----Crunchy-cheese-bites\n    |               ----384e188d-2aff-11e9-8802-7daf07a34f81\n    ----accessibility\nhttps://groceries.asda.com\n    |       ----^[0-9]+$\n    |       ----1000329097857\n    |       ----1000275697716\n    ----product\n            ----1000005036703\n            ----910000879998\n    |               ----^[0-9]+$\n    |               ----103099\n    |       ----^[0-9A-Za-z\\-]+$\n    |       |       ----617635960\n    |               ----^[0-9]+$\n    |       ----fresh-food-bakery\n    |       |       ----103099\n    ----cat-|\n            |       ----^[0-9]+$\n            ----vegan-plant-based\n                    ----617635960\n    |               ----^[0-9A-Za-z]+$\n    |       ----^[0-9A-Za-z\\-]+$\n    |       |       ----ls91619\n    ----promotion\n            |       ----^[0-9A-Za-z]+$\n            ----2-for-4\n                    ----ls91619')
+    pass
 
 def test_rankTree_get_example_generalisation():
     urls = [
