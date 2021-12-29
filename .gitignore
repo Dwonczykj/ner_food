@@ -9,3 +9,4 @@ data/SR-Leg_ASC/*
 *.icloud
 app.log
 data/*.csv
+.env

@@ -424,16 +424,16 @@ class TreeTraversable(ITreeNode):
         return hash(str(self))   
     
 T = TypeVar("T")
-TSerializable = TypeVar("TSerializable", str, Uint, int, float, None, list, dict, Sequence, Iterable, bool)
+TS = TypeVar("TS", str, Uint, int, float, None, list, dict, Sequence, Iterable, bool)
 
 class Serializable(abc.ABC):
 
     @abc.abstractclassmethod
-    def toDict(self) -> dict[str,TSerializable]:
+    def toDict(self) -> dict[str,TSrz]:
         pass
     
     @abc.abstractclassmethod
-    def fromDict(dic:dict[str,TSerializable], objType:T) -> T:
+    def fromDict(dic:dict[str,TSrz], objType:T) -> T:
         pass
     
     # def fromJson(jsonString:str, objType:T) -> T:
@@ -452,14 +452,14 @@ class Serializable(abc.ABC):
     
 class TreeSerializable(ITreeNode, Serializable):
 
-    def toDict(self) -> dict[str,TSerializable]:
+    def toDict(self) -> dict[str,TSrz]:
         return {
             'name': self.name,
             'data': self.data.toDict() if isinstance(self.data,Serializable) else self.data,
             'children': [c.toDict() for c in self.children]
         }
         
-    def fromDict(dic:dict[str,TSerializable], objType:V) -> V:
+    def fromDict(dic:dict[str,TSrz], objType:V) -> V:
         instance = type(objType)(dic['name'])
         instance.data = dic['data']
         for child in instance.children:

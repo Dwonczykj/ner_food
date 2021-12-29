@@ -8,7 +8,7 @@ import os
 from collections import defaultdict
 from collections.abc import Sequence
 from enum import Enum, IntEnum
-from typing import Literal
+from typing import Iterable, Literal, TypeVar
 import debugpy as debug
 import warnings
 from pprint import pprint
@@ -19,7 +19,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import atexit
 from datetime import datetime
-from file_appender import IFileAppender, DummyFileAppender, FileAppender
+from file_appender import IFileAppender, DummyFileAppender, FileAppender, TxtFileAppender, JsonFileAppender
 
 import logging
 
@@ -277,11 +277,21 @@ class UrlDiscoEngine():
                         self.driver.execute_script(f'document.getElementById(\'{btn_id}\').click()')
 
 
-    
+    TX = TypeVar("TX", str, int, float, None, list, dict, bool)
 
-    
+    def _processState(state:TX):
+        if isinstance(state, list) or isinstance(state,Iterable):
+            return [u for s in state for u in UrlDiscoEngine._processState(s)]
+        elif isinstance(state, dict):
+            return [u for k in state.keys() for u in [k, *UrlDiscoEngine._processState(state[k])]]
+        elif isinstance(state, str):
+            return [state]
+        elif isinstance(state, int) or isinstance(state, float) or isinstance(state, bool):
+            return [str(state)]
+        else:
+            logging.error(f'Cant add to url_discovery state for new state of type: {type(state)}')
+            return []
         
-
     def run_url_discovery(self, domain, subDomainReq, explodeTimes:Uint=defaultSpiderExplodeDepth, saveOut:str=None):
         
         driver = self.driver
@@ -290,22 +300,31 @@ class UrlDiscoEngine():
             warnings.warn(f'Warning: Max allowed Spider Explode to depth of: {UrlDiscoEngine.maxSpiderExplodeAllowed}')
         fileToClose = False    
         saveFileWrap:IFileAppender
-        if saveOut is not None:
+        state = {}
+        urlPioneer:set[str] = set()
+        if saveOut is not None and saveOut.endswith('.txt'):
             fileToClose = True
-            saveFileWrap = FileAppender(saveOut).openStream()
+            saveFileWrap = TxtFileAppender(saveOut[:-4]).openStream()
+        elif saveOut is not None:
+            fileToClose = True
+            saveFileWrap = JsonFileAppender(saveOut).openStream()
+            if saveFileWrap.containsData():
+                state = saveFileWrap.loadData()
+                if hasattr(state, 'urls'):
+                    urlPioneer = set(UrlDiscoEngine._processState(state['urls']))
         else:
             saveFileWrap = DummyFileAppender('Dummy').openStream()
             
         try:   
             urlsToSearch = [domain]
             newurls = []
-            urlPioneer = []
+            
             _i = 0
             urlTree:RankPairTree = RankPairTree()
             urlDict:dict[str,UrlProps] = defaultdict(lambda : UrlProps([], []))
             while _i < max(1,min(UrlDiscoEngine.defaultSpiderExplodeDepth,explodeTimes)):
                 _i += 1
-                newurls:list[str] = []
+                newurls:set[str] = set()
                 for url in urlsToSearch:
                     _useSeleniumForThisUrl = self.useSelenium
                     exampleUrl = urlTree.getExampleGeneralisationOf(url, removeRegexNodes=True)
@@ -330,9 +349,13 @@ class UrlDiscoEngine():
                         urlProps = self.urlDiscovery(url, driver, useSelenium=_useSeleniumForThisUrl, requiredSubDomain=subDomainReq)
                     urlDict[url] = urlProps
                         
-                    newurls += urlProps.anchorTagHrefs + urlProps.embeddedScriptAndAnchorTagHrefs
-                    saveFileWrap.write(f'\n{url}\n-\t' + '\n-\t'.join(newurls))
-                urlsToSearch = [url for url in set(newurls) if url not in urlPioneer]
+                    newurls = newurls.union((urlProps.anchorTagHrefs + urlProps.embeddedScriptAndAnchorTagHrefs))
+                    
+                    if isinstance(saveFileWrap, JsonFileAppender):
+                        saveFileWrap.write({url: newurls})
+                    elif isinstance(saveFileWrap, TxtFileAppender):
+                        saveFileWrap.write(f'\n{url}\n-\t' + '\n-\t'.join(newurls))
+                urlsToSearch = newurls - urlPioneer
                 if self.maxSubUrls > -1:
                     urlsToSearch = urlsToSearch[:self.maxSubUrls]
                 urlPioneer += urlsToSearch
@@ -369,7 +392,7 @@ if __name__ == '__main__':
     # logging.info('Opening file %r, mode = %r', filename, mode)
     # logging.debug('Got here')
     
-    UrlDiscoEngine(True).run_url_discovery('https://groceries.asda.com', 'asda.com', explodeTimes = 2, saveOut='ASDA')
+    UrlDiscoEngine(True).run_url_discovery('https://groceries.asda.com', 'asda.com', explodeTimes = 3, saveOut='ASDA')
     
     
 
