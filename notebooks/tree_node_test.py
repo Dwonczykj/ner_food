@@ -21,7 +21,47 @@ from tree_node import TreeNode, TreeRootNodeBase
 #     ], 'Node Jagged Array does not correctly refresh from child nodes.'
 
 
+def test_can_traverse_preorder():
+    tree = _build_complex_tree()
+    allNodesPreOrder = tree.traversePreorder(map=lambda n: n.name)
+    traversalType = 'Preorder'
+    assert len(allNodesPreOrder) == 7, f'Some nodes were missed when traversing the tree in {traversalType}'
+    assert allNodesPreOrder == [
+        "RootTreeNode", 
+        "TreeNode_Layer_1_child1", 
+        "TreeNode_Layer_2_child1", "TreeNode_Layer_2_child2", 
+        "TreeNode_Layer_1_child2", 
+        "TreeNode_Layer_2_child3", "TreeNode_Layer_2_child4"
+        ], f'Nodes are in wrong order after {traversalType} traversal'
+    temp = tree.traversePreorder()
+    allNodesPreOrder2 = [n.name for n in temp]
+    assert allNodesPreOrder2 == allNodesPreOrder, f'The default Callable passed to TreeTraversable.traverse{traversalType}() failed'
+    
+    pass
 
+def test_can_traverse_postorder():
+    tree = _build_complex_tree()
+    allNodesPostOrder = tree.traversePostorder(map=lambda n: n.name)
+    traversalType = 'Postorder'
+    assert len(allNodesPostOrder) == 7, f'Some nodes were missed when traversing the tree in {traversalType}'
+    assert allNodesPostOrder == ["TreeNode_Layer_2_child1", "TreeNode_Layer_2_child2", "TreeNode_Layer_1_child1", "TreeNode_Layer_2_child3", "TreeNode_Layer_2_child4", "TreeNode_Layer_1_child2", "RootTreeNode"], f'Nodes are in wrong order after {traversalType} traversal'
+    temp = tree.traversePostorder()
+    allNodesPostOrder2 = [n.name for n in temp]
+    assert allNodesPostOrder2 == allNodesPostOrder, f'The default Callable passed to TreeTraversable.traverse{traversalType}() failed'
+    
+    pass
+
+def test_can_traverse_inorder():
+    tree = _build_complex_tree()
+    allNodesInOrder = tree.traverseInorder(map=lambda n: n.name)
+    traversalType = 'Inorder'
+    assert len(allNodesInOrder) == 7, f'Some nodes were missed when traversing the tree in {traversalType}'
+    assert allNodesInOrder == ["TreeNode_Layer_2_child1", "TreeNode_Layer_1_child1", "TreeNode_Layer_2_child2", "RootTreeNode", "TreeNode_Layer_2_child3", "TreeNode_Layer_1_child2", "TreeNode_Layer_2_child4"], f'Nodes are in wrong order after {traversalType} traversal'
+    temp = tree.traverseInorder()
+    allNodesInOrder2 = [n.name for n in temp]
+    assert allNodesInOrder2 == allNodesInOrder, f'The default Callable passed to TreeTraversable.traverse{traversalType}() failed'
+    
+    pass
 
 def test_can_add_child_to_tree():
     tree = TreeNode(name='TestTree')

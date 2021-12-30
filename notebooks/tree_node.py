@@ -5,7 +5,7 @@ from os import path, setpgid
 import io
 import os
 import re
-from typing import Any, Generic, Iterable, Optional, TypeVar
+from typing import Any, Callable, Generic, Iterable, Optional, TypeVar
 import jsonpickle
 import requests
 import numpy as np
@@ -96,6 +96,7 @@ class ITreeNode(abc.ABC):
         self.data: TreeSerializable = None
         self._data: TreeSerializable = None
         self.name:str = name
+        self._id = str(uuid.uuid4())
         
     def _getData(self):
         return self._data
@@ -104,6 +105,11 @@ class ITreeNode(abc.ABC):
         self._data = data
         
     data = property(_getData,_setData)
+    
+    def _getId(self):
+        return self._id
+    
+    id = property(_getId)
     
     
     COUNT:list[int]
@@ -114,14 +120,17 @@ class ITreeNode(abc.ABC):
 
     def print2D(root) :
         pass
+    
+    def _dummyPipe(v:T) -> T:
+        return v
 
-    def traverseInorder(self):
+    def traverseInorder(self, map:Callable[[ITreeNode],T]=_dummyPipe):
         pass
 
-    def traversePostorder(self):
+    def traversePostorder(self, map:Callable[[ITreeNode],T]=_dummyPipe):
         pass
 
-    def traversePreorder(self):
+    def traversePreorder(self, map:Callable[[ITreeNode],T]=_dummyPipe):
         pass
     
     def __repr__(self):
@@ -336,9 +345,11 @@ class TreePrintable(ITreeNode):
         return TreePrintable.print2DUtil(root, 0)
 
 class TreeTraversable(ITreeNode):
+    def _dummyPipe(v:T) -> T:
+        return v
 
     # A function to do inorder tree traversal
-    def traverseInorder(self):
+    def traverseInorder(self, map:Callable[[ITreeNode],Any]=_dummyPipe):
 
         output:list[TreeNode] = []
 
@@ -351,21 +362,21 @@ class TreeTraversable(ITreeNode):
 
             # First recur on left child
             for childRoot in self.children[int((n+1)/2.0)-1::-1]:
-                output += childRoot.traverseInorder()
+                output += childRoot.traverseInorder(map=map)
 
             # then print the name of node
-            output += [self]
+            output += [map(self)]
 
             # now recur on right child
             for childRoot in self.children[:int((n+1)/2.0)-1:-1]:
-                output += childRoot.traverseInorder()
+                output += childRoot.traverseInorder(map=map)
             
         
         return output
 
 
     # A function to do postorder tree traversal
-    def traversePostorder(self):
+    def traversePostorder(self, map:Callable[[ITreeNode],Any]=_dummyPipe):
 
         output:list[TreeNode] = []
 
@@ -378,19 +389,19 @@ class TreeTraversable(ITreeNode):
 
             # First recur on left child
             for childRoot in self.children[int((n+1)/2.0)-1::-1]:
-                output += childRoot.traversePostorder()
+                output += childRoot.traversePostorder(map=map)
 
             # the recur on right child
             for childRoot in self.children[:int((n+1)/2.0)-1:-1]:
-                output += childRoot.traversePostorder()
+                output += childRoot.traversePostorder(map=map)
 
             # now print the data of node
-            output += [self]
+            output += [map(self)]
 
         return output
 
     # A function to do preorder tree traversal
-    def traversePreorder(self):
+    def traversePreorder(self, map:Callable[[ITreeNode],T]=_dummyPipe):
 
         output:list[TreeNode] = []
 
@@ -402,15 +413,15 @@ class TreeTraversable(ITreeNode):
                 n = len(self.children)
 
             # First print the data of node
-            output += [self]
+            output += [map(self)]
 
             # Then recur on left child
             for childRoot in self.children[int((n+1)/2.0)-1::-1]:
-                output += childRoot.traversePreorder()
+                output += childRoot.traversePreorder(map=map)
 
             # Finally recur on right child
             for childRoot in self.children[:int((n+1)/2.0)-1:-1]:
-                output += childRoot.traversePreorder()
+                output += childRoot.traversePreorder(map=map)
 
         return output
     
@@ -418,7 +429,7 @@ class TreeTraversable(ITreeNode):
         return TreeNode.print2D(self)
 
     def __str__(self) -> str:
-        return str([node.name for node in self.traverseInorder()])
+        return str(self.traverseInorder(map=lambda n: n.name))
 
     def __hash__(self) -> int:
         return hash(str(self))   
@@ -429,11 +440,11 @@ TS = TypeVar("TS", str, Uint, int, float, None, list, dict, Sequence, Iterable, 
 class Serializable(abc.ABC):
 
     @abc.abstractclassmethod
-    def toDict(self) -> dict[str,TSrz]:
+    def toDict(self) -> dict[str,TS]:
         pass
     
     @abc.abstractclassmethod
-    def fromDict(dic:dict[str,TSrz], objType:T) -> T:
+    def fromDict(dic:dict[str,TS], objType:T) -> T:
         pass
     
     # def fromJson(jsonString:str, objType:T) -> T:
@@ -452,14 +463,14 @@ class Serializable(abc.ABC):
     
 class TreeSerializable(ITreeNode, Serializable):
 
-    def toDict(self) -> dict[str,TSrz]:
+    def toDict(self) -> dict[str,TS]:
         return {
             'name': self.name,
             'data': self.data.toDict() if isinstance(self.data,Serializable) else self.data,
             'children': [c.toDict() for c in self.children]
         }
         
-    def fromDict(dic:dict[str,TSrz], objType:V) -> V:
+    def fromDict(dic:dict[str,TS], objType:V) -> V:
         instance = type(objType)(dic['name'])
         instance.data = dic['data']
         for child in instance.children:

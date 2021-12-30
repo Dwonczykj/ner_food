@@ -5,7 +5,7 @@ from os import path
 import io
 import os
 import re
-from typing import Literal, Tuple, overload
+from typing import Callable, Literal, Tuple, TypeVar, overload
 import requests
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,15 +15,15 @@ from uint import Uint, Int
 from enum import Enum, IntEnum
 import debugpy as debug
 import warnings
-from pprint import pprint
-from tree_node import ITreeNode, TSerializable, Serializable, TreeSerializable
+
 import abc
 from url_parser import UrlMatchEnum
 from py_utils import predicatePipe
 import jsonpickle
 
 
-from tree_node import TreeNode, TreeNodeRoot, TreeRootNodeBase, draw_new_tree, save_pydot_to_png
+
+from tree_node import TreeNode, TreeNodeRoot, TreeRootNodeBase, draw_new_tree, save_pydot_to_png, view_graph, ITreeNode, TS, Serializable, TreeSerializable
 from url_parser import ParsedUrlParser
 
 
@@ -75,6 +75,8 @@ class IRankPairTreeNode(IRankPairTreeRootNode):
     @abc.abstractmethod
     def getNumSiblingsOfPathType(self):
         pass
+    
+T = TypeVar("T")
 
 class RankPairTreeNodeSortable(TreeRootNodeBase):
 
@@ -91,17 +93,20 @@ class RankPairTreeNodeSortable(TreeRootNodeBase):
         if sortPathsAlphabetically:
             self._children.sort(key=lambda c: c.name)
         self._children.sort(key=lambda c: c.data['isRegexNode'])
+        
+    def _dummyPipe(v:T) -> T:
+        return v
 
-    def traversePreorder(self):
-        result: list[RankPairTreeNode] = super().traversePreorder()
+    def traversePreorder(self, map:Callable[[ITreeNode],T]=_dummyPipe):
+        result: list[RankPairTreeNode] = super().traversePreorder(map=map)
         return result
 
-    def traverseInorder(self):
-        result: list[RankPairTreeNode] = super().traverseInorder()
+    def traverseInorder(self, map:Callable[[ITreeNode],T]=_dummyPipe):
+        result: list[RankPairTreeNode] = super().traverseInorder(map=map)
         return result
                 
-    def traversePostorder(self):
-        result: list[RankPairTreeNode] = super().traversePostorder()
+    def traversePostorder(self, map:Callable[[ITreeNode],T]=_dummyPipe):
+        result: list[RankPairTreeNode] = super().traversePostorder(map=map)
         return result
 
 class RankPairTreeUrlBuilder(abc.ABC):
@@ -111,9 +116,11 @@ class RankPairTreeUrlBuilder(abc.ABC):
         pass
 
     urlSegment = property(_getUrlSegment)
+    
+V = TypeVar("V")
 
 class RankPairTreeNodeSerializable(TreeSerializable):
-    def toDict(self) -> dict[str,TSerializable]:
+    def toDict(self) -> dict[str,TS]:
         return {
             '__type__': type(self),
             'name': self.name,
@@ -121,7 +128,7 @@ class RankPairTreeNodeSerializable(TreeSerializable):
             'children': [c.toDict() for c in self.children]
         }
         
-    def fromDict(dic:dict[str,TSerializable], objType:V) -> V:
+    def fromDict(dic:dict[str,TS], objType:V) -> V:
         instance = type(objType)(dic['name'])
         instance.data = dic['data']
         for child in instance.children:
@@ -467,11 +474,11 @@ class RankPairTree(Serializable):
     def copyDeep(self) -> RankPairTree:
         return RankPairTree.fromState(self._treeState)
     
-    def fromDict(dic: dict[str, TSerializable], objType: type[RankPairTree]) -> RankPairTree:
+    def fromDict(dic: dict[str, TS], objType: type[RankPairTree]) -> RankPairTree:
         instance = RankPairTree.fromState(RankPairTreeNode.fromDict(dic['_treeState'], RankPairTreeNode))
         instance.initialised = dic['initialised']
     
-    def toDict(self) -> dict[str, TSerializable]:
+    def toDict(self) -> dict[str, TS]:
         return {
             '_treeState': self._treeState.toDict(),
             'initialised': self.initialised
@@ -481,6 +488,8 @@ class RankPairTree(Serializable):
         graph = draw_new_tree(self._treeState)
         if outFileName is not None:
             save_pydot_to_png(graph, outFileName)
+        else:
+            view_graph(graph)
 
     def embedUrl(self, url:str):
         return self._processUrl(url, embed=True)[0]

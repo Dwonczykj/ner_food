@@ -41,8 +41,13 @@ class Neo4jConnectionFactory():
     
     def getInstance():
         if not Neo4jConnectionFactory._instance:
-            Neo4jConnectionFactory._instance = Neo4jConnection(uri="bolt://35.170.185.163:7687", 
-                                                               user="neo4j",              
+            load_dotenv()                    #for python-dotenv method
+
+            user_name = os.environ.get('BOLT_USER')
+            password = os.environ.get('SANDBOX_PASS')
+            bolt_url = os.environ.get('BOLT_SANDBOX_URL')
+            Neo4jConnectionFactory._instance = Neo4jConnection(uri=bolt_url, 
+                                                               user=user_name,              
                                                                pwd=password)
         return Neo4jConnectionFactory._instance
         
@@ -50,11 +55,5 @@ class Neo4jConnectionFactory():
     
         
 if __name__ == '__main__':
-    load_dotenv()                    #for python-dotenv method
-
-    user_name = os.environ.get('USER')
-    password = os.environ.get('password')
-
-
-    conn = Neo4jConnectionFactory.getInstance()
+    pass
 
