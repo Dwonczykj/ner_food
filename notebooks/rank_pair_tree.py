@@ -122,8 +122,7 @@ V = TypeVar("V")
 class RankPairTreeNodeSerializable(TreeSerializable):
     def toDict(self) -> dict[str,TS]:
         return {
-            '__type__': type(self),
-            'name': self.name,
+            **super().toDict(),
             'data': self.data.toDict() if isinstance(self.data,Serializable) else self.data,
             'children': [c.toDict() for c in self.children]
         }

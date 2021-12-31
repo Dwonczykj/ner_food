@@ -11,6 +11,14 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "env": {"PYTHONPATH": "${workspaceFolder}/notebooks/"}
+        },
+        {
+            "name":"Neo4j main",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/notebooks/repository/graph/main.py",
+            "console": "integratedTerminal",
+            "env": {"PYTHONPATH": "${workspaceFolder}/notebooks/"}
         }
     ]
 }

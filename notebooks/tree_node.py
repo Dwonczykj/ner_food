@@ -93,23 +93,27 @@ def view_graph(graph:pydot.Dot):
 # @abc.ABC
 class ITreeNode(abc.ABC):
     def __init__(self, name:str) -> None:
-        self.data: TreeSerializable = None
-        self._data: TreeSerializable = None
+        self._data: Serializable = None
         self.name:str = name
         self._id = str(uuid.uuid4())
         
     def _getData(self):
         return self._data
     
-    def _setData(self, data:TreeSerializable):
+    
+    def _setData(self, data:Serializable):
         self._data = data
         
-    data = property(_getData,_setData)
+    data:Serializable = property(_getData,_setData)
+    
+    @abc.abstractclassmethod
+    def toDict(self) -> dict:
+        pass
     
     def _getId(self):
         return self._id
     
-    id = property(_getId)
+    id:str = property(_getId)
     
     
     COUNT:list[int]
@@ -466,9 +470,12 @@ class TreeSerializable(ITreeNode, Serializable):
     def toDict(self) -> dict[str,TS]:
         return {
             'name': self.name,
+            'id': str(self.id),
+            # '__type__': type(self),
             'data': self.data.toDict() if isinstance(self.data,Serializable) else self.data,
             'children': [c.toDict() for c in self.children]
         }
+        
         
     def fromDict(dic:dict[str,TS], objType:V) -> V:
         instance = type(objType)(dic['name'])
@@ -503,9 +510,10 @@ class TreeRootNode(ITreeChildNode):
     # #     self._parent = parent
     # parent = property(getParent)
 
-    def getChildren(self):
+    def getChildren(self) -> list[TreeRootNode]:
         return self._children
-    children = property(getChildren)
+    
+    children:list[TreeRootNode] = property(getChildren)
 
     def appendChild(self, node:ITreeChildNode, atPosition:Optional[int]=None):
         assert isinstance(node, ITreeChildNode), 'can only add TreeNode children'
@@ -557,6 +565,14 @@ class TreeRootNodeBase(TreeRootNode, TreePrintable, TreeTraversable, TreeSeriali
 
     def __hash__(self) -> int:
         return hash(str(self))
+    
+    def toDict(self) -> dict[str, TS]:
+        return super().toDict()
+    
+    def _getChildren(self):
+        return super().getChildren()
+    
+    children:list[TreeRootNodeBase] = property()
     
     def drawGraph(self, outFileName:str=None):
         graph = draw_new_tree(self)
